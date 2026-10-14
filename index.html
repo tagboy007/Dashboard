@@ -1,0 +1,1352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Personal Analytics Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* Layout concept: one glass hero (clock, key stats, ring) over a sticky tab bar; the dashboard is a grid of
+   eight independent module cards (1 / 2 / 3 / 4 columns), with insights above and streaks + weekly chart below.
+   Deliberately dark-only, as requested: deep black ground, glass cards, cyan and violet neon. */
+:root{
+  --bg:#05060a; --ink:#eef1f8; --ink2:#a6aec3; --mute:#6f778d;
+  --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.15);
+  --cyan:#22d3ee; --violet:#a78bfa; --good:#4ade80; --warn:#fbbf24; --bad:#fb7185;
+  --accent:#22d3ee; --accent-rgb:34,211,238; --accent2:#a78bfa;
+  --font:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --r:18px; color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{background:var(--bg)}
+body{
+  margin:0; font-family:var(--font); font-size:14px; line-height:1.5; color:var(--ink);
+  padding-left:max(16px,env(safe-area-inset-left,0px)); padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:18px 90px; overflow-x:clip; -webkit-font-smoothing:antialiased;
+}
+body::before{
+  content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background:
+    radial-gradient(900px 520px at 8% -8%,rgba(var(--accent-rgb),.14),transparent 62%),
+    radial-gradient(800px 520px at 100% 0%,rgba(167,139,250,.15),transparent 60%),
+    radial-gradient(700px 500px at 50% 110%,rgba(34,211,238,.06),transparent 60%),
+    var(--bg);
+}
+.wrap{max-width:1800px;margin:0 auto}
+h1,h2,h3,h4{margin:0;font-weight:650;letter-spacing:-.01em;text-wrap:balance}
+button,input,select,textarea{font-family:inherit}
+.num,.mono{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---------- glass + buttons ---------- */
+.glass{
+  background:linear-gradient(180deg,rgba(255,255,255,.058),rgba(255,255,255,.024));
+  border:1px solid var(--line); border-radius:var(--r);
+  -webkit-backdrop-filter:blur(24px) saturate(150%); backdrop-filter:blur(24px) saturate(150%);
+  box-shadow:0 12px 40px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.05);
+}
+.btn{
+  --bc:var(--accent-rgb);
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;
+  border:1px solid var(--line2);background:rgba(255,255,255,.06);color:var(--ink);
+  border-radius:10px;padding:7px 12px;font:600 12.5px/1 var(--font);cursor:pointer;white-space:nowrap;
+  transition:transform .15s,border-color .2s,background .2s,box-shadow .2s;
+}
+.btn:hover{border-color:rgba(var(--bc),.7);background:rgba(var(--bc),.14);box-shadow:0 0 18px rgba(var(--bc),.2)}
+.btn:active{transform:scale(.96)}
+.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#04060a;border-color:transparent}
+.btn.primary:hover{box-shadow:0 0 24px rgba(var(--accent-rgb),.45);filter:brightness(1.08)}
+.btn.ghost{background:transparent;border-color:var(--line)}
+.btn.danger{--bc:251,113,133;color:#fda4af}
+.btn.sm{min-height:30px;padding:5px 9px;font-size:12px}
+.btn[disabled]{opacity:.4;cursor:not-allowed;pointer-events:none}
+
+/* ---------- hero ---------- */
+.hero{padding:22px 24px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:22px;align-items:center;position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(120deg,rgba(var(--accent-rgb),.5),transparent 30%,transparent 70%,rgba(167,139,250,.5));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;padding:1px}
+.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);font-weight:600}
+.hero-date{margin-top:4px;color:var(--ink2);font-weight:500}
+.clock{font:600 clamp(30px,5.2vw,46px)/1.05 var(--mono);letter-spacing:-.02em;margin-top:2px;
+  background:linear-gradient(90deg,#fff,var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:10px;margin-top:18px}
+.stat{padding:11px 13px;border-radius:13px;background:rgba(255,255,255,.035);border:1px solid var(--line);min-width:0}
+.stat .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--mute);font-weight:600}
+.stat .v{font-size:18px;font-weight:650;margin-top:3px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.stat .s{font-size:11.5px;color:var(--ink2);margin-top:1px}
+.hero-ring{position:relative;width:148px;height:148px;justify-self:center}
+.hero-ring .mid{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+.hero-ring .big{font-size:34px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.hero-ring .sm{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+.ring{display:block;transform:rotate(-90deg)}
+.ring .trk{fill:none;stroke:rgba(255,255,255,.08)}
+.ring .val{fill:none;stroke-linecap:round;transition:stroke-dashoffset 1.1s cubic-bezier(.2,.8,.2,1);filter:drop-shadow(0 0 6px var(--glow,rgba(34,211,238,.6)))}
+
+/* ---------- nav ---------- */
+.nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:30;margin:14px 0 18px;padding:6px;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;border-radius:14px}
+.nav::-webkit-scrollbar{display:none}
+.tab{flex:0 0 auto;border:0;background:transparent;color:var(--ink2);font:600 13px/1 var(--font);padding:11px 16px;border-radius:10px;cursor:pointer;transition:background .2s,color .2s}
+.tab:hover{color:var(--ink);background:rgba(255,255,255,.06)}
+.tab.on{color:#04060a;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 0 22px rgba(var(--accent-rgb),.35)}
+
+/* ---------- views ---------- */
+.enter{animation:rise .5s cubic-bezier(.2,.8,.2,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.sec-h{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin:26px 0 12px}
+.sec-h:first-child{margin-top:0}
+.sec-h h2{font-size:17px}
+.sec-h .sub{color:var(--mute);font-size:12.5px;font-weight:500}
+.bar-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 14px;margin-bottom:16px}
+.bar-row .grow{flex:1;min-width:0}
+.dateline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.banner{padding:10px 14px;border-radius:12px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);color:#fde68a;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.banner.info{border-color:rgba(var(--accent-rgb),.35);background:rgba(var(--accent-rgb),.07);color:var(--ink)}
+
+/* insights */
+.ins-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:10px}
+.ins{display:flex;gap:10px;align-items:flex-start;padding:11px 13px;border-radius:13px;border:1px solid var(--line);background:rgba(255,255,255,.03);font-size:13px;min-width:0}
+.tag{flex:0 0 auto;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:99px;margin-top:1px}
+.tag.good{color:var(--good);background:rgba(74,222,128,.12)}
+.tag.warn{color:var(--warn);background:rgba(251,191,36,.12)}
+.tag.bad{color:var(--bad);background:rgba(251,113,133,.12)}
+.tag.info{color:var(--cyan);background:rgba(34,211,238,.12)}
+.tag.mute{color:var(--mute);background:rgba(255,255,255,.06)}
+
+/* ---------- module cards ---------- */
+.grid{display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
+@media(min-width:768px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(min-width:1024px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(min-width:1024px) and (max-width:1439.98px){.card[data-m=weight]{grid-column:span 2}}
+@media(min-width:1440px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.card{--c:#22d3ee;--cr:34,211,238;position:relative;padding:18px;min-width:0;
+  transition:transform .28s cubic-bezier(.2,.8,.2,1),border-color .25s,box-shadow .25s}
+.enter .card{animation:rise .55s cubic-bezier(.2,.8,.2,1) both}
+.enter .card:nth-child(2){animation-delay:.04s}.enter .card:nth-child(3){animation-delay:.08s}.enter .card:nth-child(4){animation-delay:.12s}
+.enter .card:nth-child(5){animation-delay:.16s}.enter .card:nth-child(6){animation-delay:.2s}.enter .card:nth-child(7){animation-delay:.24s}.enter .card:nth-child(8){animation-delay:.28s}
+.card:hover{transform:translateY(-4px) scale(1.012);border-color:rgba(var(--cr),.6);
+  box-shadow:0 18px 50px rgba(0,0,0,.6),0 0 0 1px rgba(var(--cr),.25),0 0 36px rgba(var(--cr),.2)}
+.card .btn{--bc:var(--cr)}
+.c-head{display:flex;align-items:center;gap:10px}
+.ico{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:rgba(var(--cr),.13);color:var(--c);flex:0 0 auto}
+.c-title{font-weight:650;font-size:15px;flex:1;min-width:0}
+.pill{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 8px;border-radius:99px;white-space:nowrap}
+.pill.good{color:var(--good);background:rgba(74,222,128,.13)}
+.pill.warn{color:var(--warn);background:rgba(251,191,36,.12)}
+.pill.info{color:var(--cyan);background:rgba(34,211,238,.12)}
+.pill.mute{color:var(--mute);background:rgba(255,255,255,.07)}
+.pill.bad{color:var(--bad);background:rgba(251,113,133,.12)}
+.c-body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:center;margin-top:14px}
+.c-ring{position:relative;width:88px;height:88px}
+.c-ring .mid{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:17px;font-variant-numeric:tabular-nums}
+.kv{display:grid;gap:7px;margin:0}
+.kv div{display:flex;justify-content:space-between;gap:10px;align-items:baseline;border-bottom:1px dashed var(--line);padding-bottom:5px}
+.kv div:last-child{border:0;padding:0}
+.kv dt{color:var(--mute);font-size:12px}
+.kv dd{margin:0;font-weight:650;font-variant-numeric:tabular-nums;text-align:right}
+.kv dd small{color:var(--mute);font-weight:500}
+.extra{margin-top:10px;font-size:12px;color:var(--ink2);display:flex;flex-wrap:wrap;gap:4px 14px}
+.extra b{color:var(--ink);font-variant-numeric:tabular-nums}
+.mini{height:64px;margin-top:12px;position:relative}
+.mini canvas,.cw canvas{display:block;max-width:100%}
+.mini.none{display:grid;place-items:center;color:var(--mute);font-size:12px;border:1px dashed var(--line2);border-radius:10px}
+.c-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;align-items:center}
+.c-actions .push{margin-left:auto}
+
+/* ---------- generic panels ---------- */
+.two{display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
+@media(min-width:1024px){.two{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}.two.eq{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.three{display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
+@media(min-width:768px){.three{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(min-width:1280px){.three{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.panel{padding:18px;min-width:0}
+.panel h3{font-size:14.5px;margin-bottom:4px}
+.panel .hint{color:var(--mute);font-size:12px;margin-bottom:10px}
+.cw{position:relative;height:230px;min-width:0}
+.cw.tall{height:290px}
+.cw.short{height:180px}
+.scrollx{overflow-x:auto}
+.scrollx>.cw{min-width:520px}
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.st{padding:11px 13px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid var(--line);min-width:0}
+.st .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);font-weight:600}
+.st .v{font-size:19px;font-weight:650;margin-top:3px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.st .s{font-size:11.5px;color:var(--ink2)}
+.bar{height:8px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden}
+.bar>i{display:block;height:100%;width:0;border-radius:99px;background:var(--c,var(--accent));box-shadow:0 0 12px var(--c,var(--accent));transition:width 1s cubic-bezier(.2,.8,.2,1)}
+.bar.over>i{background:var(--bad);box-shadow:0 0 12px var(--bad)}
+.prow{display:grid;gap:6px;margin-bottom:14px}
+.prow .top{display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.prow .top span:first-child{color:var(--ink2)}
+.prow .top b{font-variant-numeric:tabular-nums}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;gap:6px;align-items:center;padding:5px 10px;border-radius:99px;border:1px solid var(--line);background:rgba(255,255,255,.04);font-size:12px;color:var(--ink2);cursor:default}
+.chip b{color:var(--ink);font-weight:600}
+button.chip{cursor:pointer;font-family:inherit}
+button.chip.on{border-color:rgba(var(--accent-rgb),.7);color:var(--ink);background:rgba(var(--accent-rgb),.14)}
+.seg{display:inline-flex;padding:3px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--line);gap:2px}
+.seg button{border:0;background:transparent;color:var(--ink2);padding:6px 11px;border-radius:8px;font:600 12px/1 var(--font);cursor:pointer;min-height:28px}
+.seg button.on{background:rgba(var(--accent-rgb),.2);color:var(--ink)}
+.empty{color:var(--mute);padding:18px;text-align:center;border:1px dashed var(--line2);border-radius:12px;font-size:13px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin:2px 0 8px;font-size:12px;color:var(--ink2)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+
+/* streaks */
+.srow{display:grid;grid-template-columns:90px minmax(0,1fr) auto;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+.srow:last-child{border:0}
+.srow .n{font-weight:600;font-size:13px}
+.srow .m{font-size:12px;color:var(--mute);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dots{display:flex;gap:3px;flex-wrap:nowrap;overflow:hidden}
+.dots i{flex:1 1 0;min-width:4px;max-width:14px;height:18px;border-radius:4px;background:rgba(255,255,255,.07)}
+.dots i.on{background:var(--c,var(--accent));box-shadow:0 0 8px var(--c,var(--accent))}
+
+/* tables / lists */
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);text-align:left;padding:8px 10px;white-space:nowrap;font-weight:600}
+td{padding:9px 10px;border-top:1px solid var(--line);white-space:nowrap;font-variant-numeric:tabular-nums}
+td.wrap{white-space:normal;min-width:160px}
+td.r,th.r{text-align:right}
+.ent{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:13px}
+.ent:first-child{border-top:0}
+.ent .t{min-width:0;overflow-wrap:anywhere}
+.ent .d{color:var(--mute);font-size:11.5px}
+
+/* meals */
+.meal{padding:16px;min-width:0}
+.meal-h{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.meal-h h3{font-size:15px}
+.meal-h .tot{font-size:12px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.fi{display:grid;grid-template-columns:minmax(0,1fr) 64px auto auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.fi .nm{min-width:0;overflow-wrap:anywhere}
+.fi .nm small{display:block;color:var(--mute);font-size:11.5px}
+.fi input{padding:6px 8px;text-align:center}
+.fi .kc{font-size:12px;color:var(--ink2);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.x{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--mute);cursor:pointer;font-size:16px;line-height:1}
+.x:hover{color:var(--bad);border-color:rgba(251,113,133,.5)}
+.meal textarea{margin-top:10px;min-height:52px;resize:vertical}
+
+/* timeline */
+.tl-day{margin:20px 0 8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);font-weight:600}
+.tl-i{display:grid;grid-template-columns:78px 14px minmax(0,1fr);gap:12px;padding:10px 0;position:relative}
+.tl-i .tm{font:500 12.5px var(--mono);color:var(--ink2);padding-top:1px}
+.tl-i .dot{width:10px;height:10px;border-radius:50%;margin-top:5px;background:var(--c);box-shadow:0 0 10px var(--c);position:relative;z-index:1}
+.tl-i::before{content:"";position:absolute;left:90px;top:0;bottom:0;width:1px;background:var(--line)}
+.tl-i .tt{font-weight:600}
+.tl-i .dd{color:var(--ink2);font-size:12.5px;overflow-wrap:anywhere}
+
+/* forms + modal */
+.ov{position:fixed;inset:0;z-index:100;background:rgba(2,3,6,.74);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);display:grid;place-items:center;
+  padding:max(12px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));animation:fade .2s both}
+#ov2{z-index:110}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.modal{width:min(100%,560px);max-height:100%;overflow:auto;padding:22px;animation:rise .3s cubic-bezier(.2,.8,.2,1) both;background:linear-gradient(180deg,rgba(24,28,44,.96),rgba(12,14,24,.97));
+  border:1px solid rgba(var(--accent-rgb),.35);box-shadow:0 30px 90px rgba(0,0,0,.7),0 0 40px rgba(var(--accent-rgb),.12)}
+.modal.big{width:min(100%,1080px)}
+.modal.mid{width:min(100%,760px)}
+.m-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.m-head h2{font-size:18px;display:flex;align-items:center;gap:10px}
+.form{display:grid;gap:14px}
+.fld{display:grid;gap:6px;min-width:0}
+.fld label{font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--mute)}
+.fld .help{font-size:11.5px;color:var(--mute)}
+input,select,textarea{width:100%;background:rgba(255,255,255,.055);border:1px solid var(--line2);border-radius:10px;color:var(--ink);padding:10px 12px;font:500 14px var(--font);min-width:0}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.18)}
+select option{background:#10131f;color:var(--ink)}
+@media(max-width:700px){input,select,textarea{font-size:16px}}
+.row2{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
+.form-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:4px}
+.err{color:var(--bad);font-size:12.5px;min-height:18px}
+textarea.code{font:500 12px/1.5 var(--mono);min-height:240px;white-space:pre;overflow:auto}
+.wtotal{font-size:13px;font-variant-numeric:tabular-nums}
+.wtotal.ok{color:var(--good)}.wtotal.no{color:var(--bad)}
+.swatches{display:flex;gap:10px;flex-wrap:wrap}
+.sw{width:38px;height:38px;border-radius:12px;border:2px solid transparent;cursor:pointer;background:var(--s)}
+.sw.on{border-color:#fff;box-shadow:0 0 18px var(--s)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + env(safe-area-inset-bottom,0px));z-index:200;padding:11px 18px;border-radius:12px;
+  background:rgba(14,17,28,.96);border:1px solid rgba(var(--accent-rgb),.5);box-shadow:0 10px 40px rgba(0,0,0,.6),0 0 24px rgba(var(--accent-rgb),.2);font-weight:600;font-size:13px;max-width:calc(100% - 32px);animation:rise .25s both}
+.loader{position:fixed;inset:0;z-index:300;display:grid;place-items:center;background:var(--bg);transition:opacity .5s,visibility .5s}
+.loader.off{opacity:0;visibility:hidden}
+.loader i{width:46px;height:46px;border-radius:50%;border:3px solid rgba(255,255,255,.08);border-top-color:var(--accent);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:700px){
+  .hero{grid-template-columns:minmax(0,1fr);padding:18px}
+  .hero-ring{order:-1;justify-self:start;width:120px;height:120px}
+  .hero-ring .big{font-size:28px}
+  .modal{padding:18px}
+  .tl-i{grid-template-columns:64px 12px minmax(0,1fr);gap:10px}.tl-i::before{left:75px}
+  .fi{grid-template-columns:minmax(0,1fr) 58px auto}
+  .fi .kc{grid-column:1/3;text-align:left}
+}
+@media(min-width:1440px){body{font-size:14.5px}.hero{padding:26px 30px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+.ngrid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr))}
+.ngrid .panel .num{font-variant-numeric:tabular-nums}
+.pickbox{max-height:240px;overflow:auto;border:1px solid var(--line2);border-radius:12px;background:rgba(255,255,255,.03)}
+.pick{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;border:0;border-top:1px solid var(--line);color:var(--ink);padding:10px 12px;cursor:pointer;font:500 13.5px var(--font);min-height:44px}
+.pick:first-child{border-top:0}
+.pick small{display:block;color:var(--mute);font-size:11.5px}
+.pick:hover{background:rgba(255,255,255,.06)}
+.pick.on{background:rgba(var(--accent-rgb),.16);box-shadow:inset 3px 0 0 var(--accent)}
+</style>
+</head>
+<body>
+<div class="loader" id="loader" aria-hidden="true"><i></i></div>
+<div class="wrap">
+  <header class="hero glass" id="hero"></header>
+  <nav class="nav glass" id="nav" aria-label="Sections"></nav>
+  <main id="view"></main>
+</div>
+<div class="ov" id="ov" hidden></div>
+<div class="ov" id="ov2" hidden></div>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+/* =====================================================================
+   Personal Analytics Dashboard
+   Sections: 1 utils · 2 state/storage · 3 aggregation · 4 progress/streaks
+             5 insights · 6 charts · 7 render · 8 forms/actions · 9 boot
+   ===================================================================== */
+(function(){
+'use strict';
+
+/* ---------- 1. utils ---------- */
+const $=(s,r=document)=>r.querySelector(s);
+const $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num=(v,d=0)=>{const n=parseFloat(v);return isFinite(n)?n:d};
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const pad=n=>String(n).padStart(2,'0');
+const keyOf=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const todayKey=()=>keyOf(new Date());
+const parseKey=k=>{const p=k.split('-').map(Number);return new Date(p[0],p[1]-1,p[2])};
+const addDays=(k,n)=>{const d=parseKey(k);d.setDate(d.getDate()+n);return keyOf(d)};
+const diffDays=(a,b)=>Math.round((parseKey(b)-parseKey(a))/864e5);
+const lastN=(n,end)=>{end=end||todayKey();return Array.from({length:n},(_,i)=>addDays(end,i-n+1))};
+const f1=n=>Math.round(n*10)/10;
+const f2=n=>Math.round(n*100)/100;
+const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+const sum=a=>a.reduce((x,y)=>x+y,0);
+const avg=a=>a.length?sum(a)/a.length:0;
+const fmtTime=ts=>new Date(ts).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+const shortDate=k=>parseKey(k).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+const longDate=k=>parseKey(k).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+const wday=k=>parseKey(k).toLocaleDateString('en-GB',{weekday:'short'});
+const fmtH=h=>{h=f2(h);return (h%1===0?String(h):h.toFixed(h*10%1===0?1:2))+' h'};
+const ratio=(a,b)=>b>0?clamp(a/b,0,1):0;
+function deepMerge(t,s){for(const k in s){if(s[k]&&typeof s[k]==='object'&&!Array.isArray(s[k])){t[k]=deepMerge(t[k]&&typeof t[k]==='object'?t[k]:{},s[k])}else t[k]=s[k]}return t}
+const ICON=p=>'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+p+'</svg>';
+
+const MODS={
+  running:{label:'Running',c:'#22d3ee',cr:'34,211,238',ico:ICON('<path d="M3 12h4l3-8 4 16 3-8h4"/>')},
+  dsa:{label:'DSA',c:'#a78bfa',cr:'167,139,250',ico:ICON('<circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v4M12 11l-6 6M12 11l6 6"/>')},
+  coding:{label:'Coding',c:'#6c8cff',cr:'108,140,255',ico:ICON('<path d="M8 6l-6 6 6 6M16 6l6 6-6 6"/>')},
+  classes:{label:'Classes',c:'#fbbf24',cr:'251,191,36',ico:ICON('<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2 9 2 12 0v-5"/>')},
+  revision:{label:'Revision',c:'#fb923c',cr:'251,146,60',ico:ICON('<path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/>')},
+  diet:{label:'Diet',c:'#a3e635',cr:'163,230,53',ico:ICON('<path d="M7 3v8a2 2 0 0 0 2 2v8M11 3v8M7 7h4M17 3c-2 1-3 4-3 7s1 4 3 4v7"/>')},
+  water:{label:'Water',c:'#5eead4',cr:'94,234,212',ico:ICON('<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>')},
+  weight:{label:'Weight',c:'#fb7185',cr:'251,113,133',ico:ICON('<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M8 9a4 4 0 0 1 8 0M12 9l2-2"/>')}
+};
+const MOD_ORDER=['running','dsa','coding','classes','revision','diet','water','weight'];
+const PROG_MODS=['running','dsa','coding','classes','revision','diet','water'];
+const MEALS=[['breakfast','Breakfast'],['lunch','Lunch'],['dinner','Dinner'],['snacks','Snacks']];
+const MEAL_COL={breakfast:'#fbbf24',lunch:'#22d3ee',dinner:'#a78bfa',snacks:'#fb7185'};
+const TYPE_COL={running:'#22d3ee',dsa:'#a78bfa',coding:'#6c8cff',classes:'#fbbf24',revision:'#fb923c',diet:'#a3e635',water:'#5eead4',weight:'#fb7185',system:'#8b93a7'};
+const ACCENTS={cyan:['34,211,238','#22d3ee','#a78bfa'],violet:['167,139,250','#a78bfa','#22d3ee'],green:['74,222,128','#4ade80','#22d3ee'],rose:['251,113,133','#fb7185','#a78bfa'],amber:['251,191,36','#fbbf24','#fb7185']};
+
+/* ---------- 2. state + storage ---------- */
+const LS_KEY='pad.v1',BK_KEY='pad.backup.v1';
+const mem={};let storageOK=true;
+function lsGet(k){try{const v=localStorage.getItem(k);return v}catch(e){storageOK=false;return mem[k]==null?null:mem[k]}}
+function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){storageOK=false;mem[k]=v}}
+function lsDel(k){try{localStorage.removeItem(k)}catch(e){storageOK=false}delete mem[k]}
+
+const DEFAULT_FOODS=[
+  {id:'f-banana',name:'Banana',serving:'1 medium (118 g)',cal:105,p:1.3,c:27,f:0.4,fi:3.1,cat:'Fruit'},
+  {id:'f-milk',name:'Milk',serving:'1 cup (240 ml)',cal:149,p:8,c:12,f:8,fi:0,cat:'Dairy'},
+  {id:'f-oats',name:'Oats',serving:'40 g dry',cal:152,p:5.3,c:27,f:2.6,fi:4.1,cat:'Grains'},
+  {id:'f-curd',name:'Curd',serving:'1 bowl (150 g)',cal:92,p:5,c:5.5,f:5.6,fi:0,cat:'Dairy'},
+  {id:'f-soya',name:'Soya Chunks',serving:'30 g dry',cal:104,p:15.6,c:9.9,f:0.2,fi:3.9,cat:'Protein'},
+  {id:'f-carrot',name:'Carrot',serving:'1 medium (61 g)',cal:25,p:0.6,c:5.8,f:0.1,fi:1.7,cat:'Vegetable'},
+  {id:'f-coffee',name:'Coffee',serving:'1 cup, black (240 ml)',cal:2,p:0.3,c:0,f:0,fi:0,cat:'Beverage'},
+  {id:'f-roti',name:'Roti',serving:'1 medium (40 g)',cal:104,p:3.2,c:21,f:1,fi:2.7,cat:'Grains'},
+  {id:'f-sabzi',name:'Sabzi',serving:'1 katori (150 g)',cal:120,p:3,c:12,f:7,fi:4,cat:'Vegetable'}
+].map(f=>Object.assign({builtin:true},f));
+
+function defaultState(){
+  return{
+    v:1,created:Date.now(),startDate:null,
+    settings:{
+      weights:{running:20,dsa:20,coding:20,classes:15,revision:10,diet:10,water:5},
+      goals:{runKm:3,dsaH:4,codingH:2,classes:2,revisionH:1,calories:1800,protein:100,carbs:200,fat:55,fiber:30,waterL:3},
+      body:{targetWeight:null,startWeight:null,heightCm:null},
+      streakMin:50,accent:'cyan'
+    },
+    logs:{},weights:[],foods:JSON.parse(JSON.stringify(DEFAULT_FOODS)),timeline:[],snap:{}
+  };
+}
+function migrate(raw){
+  const d=defaultState();
+  if(!raw||typeof raw!=='object')return d;
+  const s=deepMerge(d,{v:1,created:raw.created||d.created,startDate:raw.startDate||null,settings:raw.settings||{}});
+  s.logs=raw.logs&&typeof raw.logs==='object'?raw.logs:{};
+  s.weights=Array.isArray(raw.weights)?raw.weights:[];
+  s.foods=Array.isArray(raw.foods)&&raw.foods.length?raw.foods:d.foods;
+  s.timeline=Array.isArray(raw.timeline)?raw.timeline:[];
+  s.snap=raw.snap&&typeof raw.snap==='object'?raw.snap:{};
+  return s;
+}
+let S;
+try{const r=lsGet(LS_KEY);S=migrate(r?JSON.parse(r):null)}catch(e){S=migrate(null)}
+let saveT=null;
+function save(){clearTimeout(saveT);saveT=setTimeout(flush,120)}
+function flush(){clearTimeout(saveT);lsSet(LS_KEY,JSON.stringify(S))}
+window.addEventListener('pagehide',flush);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)flush()});
+
+const UI={view:'dash',viewDate:todayKey(),detail:null,range:30,mealRange:'daily',tlFilter:'all',tlMax:80,foodQ:'',foodCat:'all',confirm:null};
+
+/* ---------- 3. aggregation ---------- */
+let tc={};
+const emptyMeal=()=>({cal:0,prot:0,carbs:0,fat:0,fiber:0,n:0});
+function T(key){
+  if(tc[key])return tc[key];
+  const l=S.logs[key]||{};
+  const t={runKm:0,runMin:0,runCal:0,runs:0,bestRun:0,dsaH:0,easy:0,med:0,hard:0,dsaN:0,codeH:0,codeN:0,projH:0,clsAtt:0,clsMiss:0,clsH:0,clsNotes:0,revH:0,revTopics:0,waterMl:0,cal:0,prot:0,carbs:0,fat:0,fiber:0,meal:{},any:false};
+  (l.running||[]).forEach(e=>{t.runKm+=e.km;t.runMin+=e.min||0;t.runCal+=e.cal||0;t.runs++;t.bestRun=Math.max(t.bestRun,e.km)});
+  (l.dsa||[]).forEach(e=>{t.dsaH+=e.h||0;t.easy+=e.easy||0;t.med+=e.med||0;t.hard+=e.hard||0});
+  t.dsaN=t.easy+t.med+t.hard;
+  (l.coding||[]).forEach(e=>{t.codeH+=e.h||0;t.codeN+=e.n||0;t.projH+=e.projH||0});
+  (l.classes||[]).forEach(e=>{t.clsAtt+=e.att||0;t.clsMiss+=e.miss||0;t.clsH+=e.h||0;t.clsNotes+=e.notes||0});
+  (l.revision||[]).forEach(e=>{t.revH+=e.h||0;t.revTopics+=topicList(e.topics).length});
+  (l.water||[]).forEach(e=>{t.waterMl+=e.ml||0});
+  MEALS.forEach(([m])=>{
+    const mm=t.meal[m]=emptyMeal();
+    ((l.meals||{})[m]||[]).forEach(e=>{
+      mm.cal+=e.cal*e.qty;mm.prot+=e.p*e.qty;mm.carbs+=e.c*e.qty;mm.fat+=e.f*e.qty;mm.fiber+=e.fi*e.qty;mm.n++;
+    });
+    t.cal+=mm.cal;t.prot+=mm.prot;t.carbs+=mm.carbs;t.fat+=mm.fat;t.fiber+=mm.fiber;
+  });
+  t.any=!!(t.runs||(l.dsa||[]).length||(l.coding||[]).length||(l.classes||[]).length||(l.revision||[]).length||t.waterMl||t.cal||weightOn(key));
+  return tc[key]=t;
+}
+const topicList=s=>String(s||'').split(/[,;\n]/).map(x=>x.trim()).filter(Boolean);
+function weightOn(key){return S.weights.filter(w=>w.date===key).sort((a,b)=>a.ts-b.ts).pop()||null}
+function sortedWeights(){return S.weights.slice().sort((a,b)=>a.date===b.date?a.ts-b.ts:(a.date<b.date?-1:1))}
+function weightAt(key){ // latest recorded weight on or before key
+  let r=null;sortedWeights().forEach(w=>{if(w.date<=key)r=w});return r}
+function weightInfo(){
+  const ws=sortedWeights(),b=S.settings.body;
+  const cur=ws.length?ws[ws.length-1].kg:null;
+  const start=b.startWeight!=null?b.startWeight:(ws.length?ws[0].kg:null);
+  const target=b.targetWeight;
+  const lost=cur!=null&&start!=null?start-cur:0;
+  const remaining=cur!=null&&target!=null?Math.max(0,cur-target):null;
+  const total=start!=null&&target!=null?start-target:null;
+  const pct=total&&total>0?clamp(lost/total,0,1):0;
+  const bmi=cur!=null&&b.heightCm?cur/Math.pow(b.heightCm/100,2):null;
+  const ago=n=>{const w=weightAt(addDays(todayKey(),-n));return w?w.kg:(ws.length?ws[0].kg:null)};
+  const weekly=cur!=null&&ws.length>1?ago(7)-cur:null;
+  const monthly=cur!=null&&ws.length>1?ago(30)-cur:null;
+  return{cur,start,target,lost,remaining,total,pct,bmi,weekly,monthly,count:ws.length};
+}
+
+/* ---------- 4. progress + streaks ---------- */
+function dietScore(t){
+  const g=S.settings.goals;if(t.cal<=0)return 0;
+  const pr=g.protein>0?Math.min(t.prot/g.protein,1):1;
+  const ca=t.cal<=g.calories?Math.min(1,t.cal/(g.calories*0.5)):Math.max(0,1-(t.cal-g.calories)/g.calories);
+  return .5*pr+.5*ca;
+}
+function fractions(key){
+  const t=T(key),g=S.settings.goals;
+  return{running:ratio(t.runKm,g.runKm),dsa:ratio(t.dsaH,g.dsaH),coding:ratio(t.codeH+t.projH,g.codingH),classes:ratio(t.clsAtt,g.classes),
+    revision:ratio(t.revH,g.revisionH),diet:g.calories>0?dietScore(t):0,water:ratio(t.waterMl,g.waterL*1000)};
+}
+const goalOn=m=>{const g=S.settings.goals;return({running:g.runKm,dsa:g.dsaH,coding:g.codingH,classes:g.classes,revision:g.revisionH,diet:g.calories,water:g.waterL})[m]>0};
+function progressLive(key){
+  const w=S.settings.weights,f=fractions(key),act=PROG_MODS.filter(goalOn);
+  const den=sum(act.map(m=>w[m]));const c={};let tot=0;
+  PROG_MODS.forEach(m=>{c[m]=(den>0&&act.includes(m)&&T(key).any)?w[m]*f[m]/den*100:0;tot+=c[m]});
+  return{overall:tot,c,f};
+}
+function progressFor(key){
+  if(key!==todayKey()&&S.snap[key]&&S.snap[key].c)return S.snap[key];
+  return progressLive(key);
+}
+const dietOK=k=>{const t=T(k),g=S.settings.goals;return t.cal>0&&t.cal<=g.calories*1.05&&t.prot>=g.protein*0.8};
+const DONE={
+  overall:k=>{const p=progressFor(k).overall;return p>0&&p>=S.settings.streakMin},
+  running:k=>T(k).runKm>0,
+  study:k=>{const t=T(k);return t.dsaH+t.revH+t.clsH>0},
+  coding:k=>{const t=T(k);return t.codeH+t.projH+t.codeN>0},
+  diet:dietOK
+};
+function streak(fn){
+  if(!S.startDate)return{cur:0,best:0};
+  const end=todayKey();let best=0,run=0;
+  for(let k=S.startDate;k<=end;k=addDays(k,1)){if(fn(k)){run++;best=Math.max(best,run)}else run=0}
+  let cur=0,k=end;if(!fn(k))k=addDays(k,-1);
+  while(k>=S.startDate&&fn(k)){cur++;k=addDays(k,-1)}
+  return{cur,best:Math.max(best,cur)};
+}
+function dayNumber(){return S.startDate?diffDays(S.startDate,todayKey())+1:0}
+function consistency(n,fn){
+  if(!S.startDate)return 0;
+  const days=Math.min(n,dayNumber());if(days<=0)return 0;
+  return lastN(days).filter(fn).length/days*100;
+}
+function overallStreakSeries(keys){ // running overall streak value for each key
+  if(!S.startDate)return keys.map(()=>0);
+  const out={};let run=0;
+  for(let k=S.startDate;k<=todayKey();k=addDays(k,1)){run=DONE.overall(k)?run+1:0;out[k]=run}
+  return keys.map(k=>out[k]||0);
+}
+
+/* ---------- 5. insights ---------- */
+function insights(){
+  const out=[],g=S.settings.goals,key=todayKey(),t=T(key),dn=dayNumber();
+  if(!S.startDate){out.push({tone:'info',tag:'Start',text:'Log your first activity to start Day 1. Everything counts from that date.'});return out}
+  if(g.runKm>0){const left=g.runKm-t.runKm;
+    out.push(left>0.05?{tone:t.runKm>0?'warn':'info',tag:'Running',text:'You need '+f1(left)+' km more running today.'}:{tone:'good',tag:'Running',text:'Running target reached with '+f1(t.runKm)+' km.'})}
+  if(g.protein>0){const left=g.protein-t.prot;
+    out.push(left>0.5?{tone:'info',tag:'Protein',text:'You need '+Math.round(left)+'g protein.'}:{tone:'good',tag:'Protein',text:'Protein goal reached ('+Math.round(t.prot)+'g).'})}
+  if(g.calories>0){
+    if(t.cal>g.calories)out.push({tone:'bad',tag:'Calories',text:'Calories exceeded by '+Math.round(t.cal-g.calories)+' kcal.'});
+    else if(t.cal>0)out.push({tone:'info',tag:'Calories',text:Math.round(g.calories-t.cal)+' kcal left for today.'});
+    else out.push({tone:'warn',tag:'Calories',text:'No meals logged yet today.'})}
+  if(g.dsaH>0){const days=Math.min(7,dn),exp=g.dsaH*days,act=sum(lastN(7).map(k=>T(k).dsaH));
+    if(exp>0){const behind=(1-act/exp)*100;
+      out.push(behind>=10?{tone:'warn',tag:'DSA',text:'You are '+Math.round(behind)+'% behind DSA target over the last '+days+' day'+(days>1?'s':'')+'.'}:{tone:'good',tag:'DSA',text:'DSA is on track: '+fmtH(act)+' of '+fmtH(exp)+'.'})}}
+  if(g.waterL>0){const h=new Date().getHours()+new Date().getMinutes()/60,goalMl=g.waterL*1000;
+    const expct=goalMl*clamp((h-7)/15,0,1);
+    if(t.waterMl>=goalMl)out.push({tone:'good',tag:'Water',text:'Water goal reached.'});
+    else if(h>=11&&t.waterMl<expct*0.6)out.push({tone:'warn',tag:'Water',text:'Water intake is low: '+f1(t.waterMl/1000)+' of '+g.waterL+' L.'})}
+  if(dn>=8){const sc=k=>DONE.study(k)?1:0;
+    const cur=sum(lastN(7).map(sc))/7*100,prev=sum(lastN(7,addDays(key,-7)).map(sc))/7*100;
+    const ch=Math.round(cur-prev);
+    if(ch>=5)out.push({tone:'good',tag:'Study',text:'Study consistency improved by '+ch+'%.'});
+    else if(ch<=-5)out.push({tone:'warn',tag:'Study',text:'Study consistency dropped by '+Math.abs(ch)+'% versus last week.'})}
+  const wi=weightInfo();
+  if(wi.weekly!=null&&Math.abs(wi.weekly)>=0.1)out.push({tone:wi.weekly>0?'good':'warn',tag:'Weight',text:(wi.weekly>0?'Down ':'Up ')+f1(Math.abs(wi.weekly))+' kg over the last 7 days.'});
+  const st=streak(DONE.overall);
+  if(st.cur>=2)out.push({tone:'good',tag:'Streak',text:st.cur+'-day streak. Longest so far: '+st.best+'.'});
+  return out;
+}
+
+/* ---------- 6. charts ---------- */
+const charts={};
+const hex2rgba=(h,a)=>{const n=parseInt(h.slice(1),16);return 'rgba('+(n>>16&255)+','+(n>>8&255)+','+(n&255)+','+a+')'};
+function killCharts(scope){Object.keys(charts).forEach(id=>{if(!scope||charts[id].__scope===scope){try{charts[id].destroy()}catch(e){}delete charts[id]}})}
+function mk(id,cfg,scope){
+  const el=document.getElementById(id);if(!el||!window.Chart)return null;
+  if(charts[id]){try{charts[id].destroy()}catch(e){}}
+  const c=new Chart(el,cfg);c.__scope=scope||'main';charts[id]=c;return c;
+}
+const TT={backgroundColor:'rgba(10,12,20,.96)',borderColor:'rgba(255,255,255,.15)',borderWidth:1,titleColor:'#eef1f8',bodyColor:'#c9cfdf',padding:10,cornerRadius:10,boxPadding:4};
+function opts(o){
+  return deepMerge({responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+    plugins:{legend:{display:false},tooltip:Object.assign({},TT)},
+    scales:{x:{grid:{display:false},border:{color:'rgba(255,255,255,.1)'},ticks:{color:'#8b93a7',maxRotation:0,autoSkip:true,maxTicksLimit:8}},
+            y:{beginAtZero:true,grid:{color:'rgba(255,255,255,.06)'},border:{display:false},ticks:{color:'#8b93a7',maxTicksLimit:5}}}},o||{});
+}
+const barDS=(label,color,data,x)=>Object.assign({type:'bar',label,data,backgroundColor:color,borderRadius:5,maxBarThickness:22,borderSkipped:false},x);
+const lineDS=(label,color,data,x)=>Object.assign({type:'line',label,data,borderColor:color,backgroundColor:hex2rgba(color,.16),borderWidth:2,pointRadius:data.length>20?0:3,pointHoverRadius:5,pointBackgroundColor:color,tension:.35,fill:true},x);
+const goalDS=(v,n)=>({type:'line',label:'Goal',data:Array(n).fill(v),borderColor:'rgba(255,255,255,.5)',borderDash:[5,5],borderWidth:1.5,pointRadius:0,pointHoverRadius:0,fill:false});
+const lab=(k,n)=>n<=7?wday(k):shortDate(k);
+const legend=a=>'<div class="legend">'+a.map(x=>'<span><i style="background:'+x[1]+'"></i>'+esc(x[0])+'</span>').join('')+'</div>';
+const UNITS={running:'km',dsa:'h',coding:'h',classes:'',revision:'h',diet:'kcal',water:'L'};
+function seriesVal(m,k){
+  const t=T(k);
+  return({running:t.runKm,dsa:t.dsaH,coding:t.codeH+t.projH,classes:t.clsAtt,revision:t.revH,diet:t.cal,water:t.waterMl/1000})[m]||0;
+}
+function dayChart(id,keys,m,type,scope,withGoal){
+  const M=MODS[m],vals=keys.map(k=>f2(seriesVal(m,k))),n=keys.length;
+  const goal=({running:S.settings.goals.runKm,dsa:S.settings.goals.dsaH,coding:S.settings.goals.codingH,classes:S.settings.goals.classes,revision:S.settings.goals.revisionH,diet:S.settings.goals.calories,water:S.settings.goals.waterL})[m];
+  const ds=[type==='line'?lineDS(M.label,M.c,vals):barDS(M.label,M.c,vals)];
+  if(withGoal!==false&&goal>0)ds.push(goalDS(goal,n));
+  mk(id,{type:'bar',data:{labels:keys.map(k=>lab(k,n)),datasets:ds},options:opts({plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+': '+f2(c.parsed.y)+(UNITS[m]?' '+UNITS[m]:'')}}}})},scope);
+}
+function miniChart(m,key){
+  const M=MODS[m];let labels,vals;
+  if(m==='weight'){const ws=sortedWeights().slice(-8);labels=ws.map(w=>shortDate(w.date));vals=ws.map(w=>w.kg)}
+  else{const keys=lastN(7,key);labels=keys.map(k=>wday(k));vals=keys.map(k=>f2(seriesVal(m,k)))}
+  if(!vals.length)return;
+  const hide={display:false};
+  const base=opts({scales:{x:hide,y:Object.assign({},hide,m==='weight'?{beginAtZero:false}:{})},layout:{padding:{top:4}},
+    plugins:{tooltip:{callbacks:{label:c=>f2(c.parsed.y)+' '+(m==='weight'?'kg':UNITS[m])}}}});
+  const ds=m==='weight'?lineDS('Weight',M.c,vals,{pointRadius:3}):
+    barDS(M.label,vals.map((v,i)=>i===vals.length-1?M.c:hex2rgba(M.c,.42)),vals,{maxBarThickness:18,borderRadius:4,minBarLength:3});
+  mk('mini-'+m,{type:m==='weight'?'line':'bar',data:{labels,datasets:[ds]},options:base});
+}
+
+/* ---------- 7. render ---------- */
+const prevNum={};
+const N=(k,v,dec,suf)=>'<span class="num" data-k="'+k+'" data-to="'+f2(v)+'" data-dec="'+(dec||0)+'">'+(+v).toFixed(dec||0)+'</span>'+(suf?'<small>'+suf+'</small>':'');
+function animateNums(root){
+  const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+  $$('.num[data-to]',root).forEach(el=>{
+    const to=+el.dataset.to,dec=+el.dataset.dec||0,k=el.dataset.k||'',from=(k in prevNum)?prevNum[k]:0;
+    prevNum[k]=to;
+    if(reduce||from===to){el.textContent=to.toFixed(dec);return}
+    const t0=performance.now();
+    (function step(now){const p=clamp((now-t0)/650,0,1),e=1-Math.pow(1-p,3);el.textContent=(from+(to-from)*e).toFixed(dec);if(p<1)requestAnimationFrame(step)})(t0);
+  });
+}
+function ring(pct,color,size,sw,grad){
+  const r=(size-sw)/2,C=2*Math.PI*r,p=clamp(pct,0,100);
+  return '<svg class="ring" width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'" style="--glow:'+color+'" aria-hidden="true">'+
+    (grad?'<defs><linearGradient id="hg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--accent)"/><stop offset="1" style="stop-color:var(--accent2)"/></linearGradient></defs>':'')+
+    '<circle class="trk" cx="'+size/2+'" cy="'+size/2+'" r="'+r+'" stroke-width="'+sw+'"/>'+
+    '<circle class="val" cx="'+size/2+'" cy="'+size/2+'" r="'+r+'" stroke-width="'+sw+'" stroke="'+(grad?'url(#hg)':color)+'" stroke-dasharray="'+C+'" stroke-dashoffset="'+C+'" data-off="'+C*(1-p/100)+'"/></svg>';
+}
+function afterPaint(root){
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    $$('.ring .val',root).forEach(c=>{c.style.strokeDashoffset=c.dataset.off});
+    $$('.bar>i[data-w]',root).forEach(i=>{i.style.width=i.dataset.w+'%'});
+  }));
+}
+const bar=(pct,c,over)=>'<div class="bar'+(over?' over':'')+'"'+(c?' style="--c:'+c+'"':'')+'><i data-w="'+clamp(pct,0,100)+'"></i></div>';
+const paceStr=(min,km)=>{if(!(min>0&&km>0))return '–';const p=min/km,m=Math.floor(p),s=Math.round((p-m)*60);return m+':'+pad(s===60?0:s)+(s===60?'':'')};
+const kcalRun=km=>{const kg=weightInfo().cur||70;return Math.round(km*kg*1.036)};
+
+function renderHero(){
+  const dn=dayNumber(),p=progressLive(todayKey()).overall,wi=weightInfo(),st=streak(DONE.overall);
+  $('#hero').innerHTML=
+  '<div class="hero-l"><div class="eyebrow">Personal Analytics</div><div class="hero-date" id="h-date">'+longDate(todayKey())+'</div>'+
+  '<div class="clock" id="h-clock">--:--:--</div>'+
+  '<div class="hero-stats">'+
+   '<div class="stat"><div class="k">Day</div><div class="v">'+(dn?'Day '+N('h-day',dn):'Not Started')+'</div><div class="s">'+(dn?'Since '+shortDate(S.startDate):'Starts with your first log')+'</div></div>'+
+   '<div class="stat"><div class="k">Weight goal</div><div class="v">'+(wi.target!=null?N('h-wt',wi.target,1)+' kg':'Not set')+'</div><div class="s">'+(wi.remaining!=null?f1(wi.remaining)+' kg to go':(wi.target!=null?'Log your weight':'Set it in Settings'))+'</div></div>'+
+   '<div class="stat"><div class="k">Overall progress</div><div class="v">'+N('h-p',p,0,'%')+'</div><div class="s">Today, weighted</div></div>'+
+   '<div class="stat"><div class="k">Remaining</div><div class="v">'+N('h-r',100-p,0,'%')+'</div><div class="s">To a full day</div></div>'+
+   '<div class="stat"><div class="k">Current streak</div><div class="v">'+N('h-s',st.cur,0)+' <small style="font-size:12px;color:var(--mute);font-weight:500">day'+(st.cur===1?'':'s')+'</small></div><div class="s">Best '+st.best+'</div></div>'+
+  '</div></div>'+
+  '<div class="hero-ring">'+ring(p,'#22d3ee',148,11,true)+'<div class="mid"><div class="big">'+N('h-pp',p,0,'%')+'</div><div class="sm">Today</div></div></div>';
+  tick();
+}
+function renderNav(){
+  const tabs=[['dash','Dashboard'],['nutrition','Nutrition'],['analytics','Analytics'],['timeline','Timeline'],['settings','Settings']];
+  $('#nav').innerHTML=tabs.map(t=>'<button class="tab'+(UI.view===t[0]?' on':'')+'" data-act="nav" data-v="'+t[0]+'"'+(UI.view===t[0]?' aria-current="page"':'')+'>'+t[1]+'</button>').join('');
+}
+function dateBar(extra){
+  const today=todayKey(),k=UI.viewDate;
+  return '<div class="bar-row glass"><div class="dateline"><label for="viewDate" class="eyebrow">Logging for</label>'+
+    '<input type="date" id="viewDate" data-chg="viewDate" value="'+k+'" max="'+today+'" style="width:auto">'+
+    (k!==today?'<button class="btn sm" data-act="date-today">Back to today</button>':'<span class="tag good">Today</span>')+'</div>'+
+    '<div class="grow"></div>'+(extra||'')+'</div>';
+}
+function statusOf(pct){return pct>=100?['Done','good']:pct>=50?['On track','info']:pct>0?['In progress','warn']:['Not started','mute']}
+
+function cardData(m,key){
+  const t=T(key),g=S.settings.goals,f=fractions(key),wi=weightInfo();
+  switch(m){
+    case 'running':return{tl:'Today\'s target',target:g.runKm,done:t.runKm,unit:' km',dec:1,pct:f.running*100,
+      extra:t.runs?'<span>Pace <b>'+paceStr(t.runMin,t.runKm)+'</b>/km</span><span>Time <b>'+f1(t.runMin)+'</b> min</span><span>Burned <b>'+Math.round(t.runCal)+'</b> kcal</span>':'<span>No run logged</span>'};
+    case 'dsa':return{tl:'Today\'s target',target:g.dsaH,done:t.dsaH,unit:' h',dec:1,pct:f.dsa*100,
+      extra:'<span>Solved <b>'+t.dsaN+'</b></span><span>E <b>'+t.easy+'</b></span><span>M <b>'+t.med+'</b></span><span>H <b>'+t.hard+'</b></span>'};
+    case 'coding':return{tl:'Today\'s target',target:g.codingH,done:t.codeH+t.projH,unit:' h',dec:1,pct:f.coding*100,
+      extra:'<span>Problems <b>'+t.codeN+'</b></span><span>Project <b>'+fmtH(t.projH)+'</b></span>'};
+    case 'classes':return{tl:'Planned today',target:g.classes,done:t.clsAtt,unit:'',dec:0,pct:f.classes*100,
+      extra:'<span>Missed <b>'+t.clsMiss+'</b></span><span>Hours <b>'+fmtH(t.clsH)+'</b></span><span>Notes <b>'+t.clsNotes+'</b></span>'};
+    case 'revision':return{tl:'Today\'s target',target:g.revisionH,done:t.revH,unit:' h',dec:1,pct:f.revision*100,
+      extra:'<span>Topics revised <b>'+t.revTopics+'</b></span>'};
+    case 'diet':return{tl:'Calorie goal',target:g.calories,done:t.cal,unit:' kcal',dec:0,pct:f.diet*100,over:t.cal>g.calories,
+      extra:'<span>Protein <b>'+Math.round(t.prot)+'</b>/'+g.protein+' g</span><span>Carbs <b>'+Math.round(t.carbs)+'</b> g</span><span>Fat <b>'+Math.round(t.fat)+'</b> g</span>'};
+    case 'water':return{tl:'Today\'s target',target:g.waterL,done:t.waterMl/1000,unit:' L',dec:2,pct:f.water*100,
+      extra:'<span><b>'+Math.round(t.waterMl)+'</b> ml of '+Math.round(g.waterL*1000)+' ml</span>'};
+    case 'weight':return{tl:'Goal weight',target:wi.target,done:wi.lost,left:wi.remaining,unit:' kg',dec:1,pct:wi.pct*100,weight:wi,
+      extra:'<span>Now <b>'+(wi.cur!=null?f1(wi.cur)+' kg':'–')+'</b></span><span>BMI <b>'+(wi.bmi?f1(wi.bmi):'–')+'</b></span><span>7d <b>'+(wi.weekly!=null?(wi.weekly>=0?'-':'+')+f1(Math.abs(wi.weekly)):'–')+'</b> kg</span>'};
+  }
+}
+function quickBtns(m){
+  const b=(q,l,cls)=>'<button class="btn sm '+(cls||'')+'" data-act="quick" data-m="'+m+'" data-q="'+q+'">'+l+'</button>';
+  const log=l=>'<button class="btn sm primary" data-act="log" data-m="'+m+'">'+l+'</button>';
+  switch(m){
+    case 'running':return b('1','+1 km')+b('2','+2 km')+log('Log run');
+    case 'dsa':return b('0.5','+30 min')+b('1','+1 h')+log('Log');
+    case 'coding':return b('0.5','+30 min')+b('1','+1 h')+log('Log');
+    case 'classes':return b('att','+1 attended')+b('miss','+1 missed');
+    case 'revision':return b('0.5','+30 min')+b('1','+1 h')+log('Log');
+    case 'diet':return '<button class="btn sm primary" data-act="meal-add" data-meal="'+autoMeal()+'">Add food</button><button class="btn sm" data-act="nav" data-v="nutrition">Meals</button>';
+    case 'water':return b('250','+250 ml')+b('500','+500 ml')+b('undo','Undo','ghost');
+    case 'weight':return log('Log weight')+b('-0.1','−0.1')+b('0.1','+0.1');
+  }
+}
+const autoMeal=()=>{const h=new Date().getHours();return h<11?'breakfast':h<16?'lunch':h<18?'snacks':'dinner'};
+function cardHTML(m,key){
+  const d=cardData(m,key),M=MODS[m];let st,left,leftLabel='Remaining';
+  if(m==='weight'){st=!d.weight.count?['No data','mute']:d.target==null?['Set goal','mute']:statusOf(d.pct)}
+  else st=d.over?['Over goal','bad']:statusOf(d.pct);
+  if(m==='weight'){left=d.left}else left=d.target-d.done;
+  if(m==='diet'&&left<0){left=-left;leftLabel='Over by'}
+  else if(m!=='diet'&&m!=='weight')left=Math.max(0,left);
+  const tv=d.target==null?'<span style="color:var(--mute);font-weight:500">Not set</span>':N('c-'+m+'-t',d.target,d.dec,d.unit);
+  const lv=left==null?'–':N('c-'+m+'-l',left,d.dec,d.unit);
+  return '<article class="card glass" data-m="'+m+'" style="--c:'+M.c+';--cr:'+M.cr+'">'+
+   '<div class="c-head"><span class="ico">'+M.ico+'</span><div class="c-title">'+M.label+'</div><span class="pill '+st[1]+'">'+st[0]+'</span></div>'+
+   '<div class="c-body"><div class="c-ring">'+ring(d.over?100:d.pct,d.over?'#fb7185':M.c,88,8)+'<div class="mid"><span>'+N('c-'+m+'-p',d.pct,0,'%')+'</span></div></div>'+
+   '<dl class="kv"><div><dt>'+d.tl+'</dt><dd>'+tv+'</dd></div>'+
+   '<div><dt>'+(m==='weight'?'Lost':'Completed')+'</dt><dd>'+N('c-'+m+'-d',d.done,d.dec,d.unit)+'</dd></div>'+
+   '<div><dt>'+leftLabel+'</dt><dd>'+lv+'</dd></div></dl></div>'+
+   '<div class="extra">'+d.extra+'</div>'+
+   (m==='weight'&&!d.weight.count?'<div class="mini none">No weigh-ins yet</div>':'<div class="mini"><canvas id="mini-'+m+'" aria-label="'+M.label+' last 7 days"></canvas></div>')+
+   '<div class="c-actions">'+quickBtns(m)+'<button class="btn sm ghost push" data-act="detail" data-m="'+m+'">Details</button></div></article>';
+}
+
+function streakPanel(){
+  const rows=[['Overall','overall','#22d3ee'],['Running','running',MODS.running.c],['Study','study',MODS.dsa.c],['Coding','coding',MODS.coding.c],['Diet','diet',MODS.diet.c]];
+  const keys=lastN(14);
+  const body=rows.map(r=>{const s=streak(DONE[r[1]]);
+    return '<div class="srow" style="--c:'+r[2]+'"><div class="n">'+r[0]+'</div><div class="dots" aria-label="Last 14 days">'+keys.map(k=>'<i class="'+(S.startDate&&DONE[r[1]](k)?'on':'')+'" title="'+shortDate(k)+'"></i>').join('')+'</div><div class="m"><b style="color:var(--ink)">'+s.cur+'</b> now · '+s.best+' best</div></div>'}).join('');
+  const wk=consistency(7,DONE.overall),mo=consistency(30,DONE.overall);
+  return '<section class="panel glass"><h3>Streaks</h3><div class="hint">A day counts toward Overall when progress reaches '+S.settings.streakMin+'%.</div>'+body+
+    '<div style="margin-top:14px">'+
+    '<div class="prow"><div class="top"><span>Weekly consistency</span><b>'+Math.round(wk)+'%</b></div>'+bar(wk,'#22d3ee')+'</div>'+
+    '<div class="prow" style="margin:0"><div class="top"><span>Monthly consistency</span><b>'+Math.round(mo)+'%</b></div>'+bar(mo,'#a78bfa')+'</div></div></section>';
+}
+function feedItems(list){
+  return list.map(e=>'<div class="tl-i" style="--c:'+(TYPE_COL[e.type]||'#8b93a7')+'"><div class="tm">'+fmtTime(e.ts)+'</div><div class="dot"></div><div><div class="tt">'+esc(e.title)+'</div>'+(e.detail?'<div class="dd">'+esc(e.detail)+'</div>':'')+'</div></div>').join('');
+}
+
+function viewDash(){
+  const key=UI.viewDate,today=todayKey(),ins=insights();
+  let h=dateBar('<span class="sub" style="color:var(--mute);font-size:12.5px">Quick buttons and forms log to this date.</span>');
+  if(key!==today)h+='<div class="banner"><span>Viewing and logging for <b>'+longDate(key)+'</b>. The header always shows today.</span></div>';
+  h+='<div class="sec-h"><h2>Smart insights</h2><span class="sub">Based on today</span></div><div class="ins-grid">'+
+    ins.map(i=>'<div class="ins glass"><span class="tag '+i.tone+'">'+esc(i.tag)+'</span><span>'+esc(i.text)+'</span></div>').join('')+'</div>';
+  h+='<div class="sec-h"><h2>Modules</h2><span class="sub">'+longDate(key)+'</span></div><div class="grid">'+MOD_ORDER.map(m=>cardHTML(m,key)).join('')+'</div>';
+  h+='<div class="sec-h"><h2>This week</h2></div><div class="two"><section class="panel glass"><h3>Weekly summary</h3><div class="hint">Each bar adds up to that day\'s overall progress, split by module.</div>'+
+    legend(PROG_MODS.map(m=>[MODS[m].label,MODS[m].c]))+'<div class="cw tall"><canvas id="ch-week"></canvas></div></section>'+streakPanel()+'</div>';
+  const rec=S.timeline.slice(-6).reverse();
+  h+='<div class="sec-h"><h2>Recent activity</h2><button class="btn sm ghost" data-act="nav" data-v="timeline">Full timeline</button></div><section class="panel glass">'+
+    (rec.length?feedItems(rec):'<div class="empty">Nothing logged yet. Use any quick button above to start Day 1.</div>')+'</section>';
+  return{html:h,after(){
+    MOD_ORDER.forEach(m=>miniChart(m,key));
+    weeklyStack('ch-week',lastN(7),'main');
+  }};
+}
+function weeklyStack(id,keys,scope,groupDays){
+  let labels,data;
+  if(groupDays){ // average contribution per block of days
+    labels=[];data=PROG_MODS.map(()=>[]);
+    for(let b=4;b>=0;b--){const ks=lastN(7,addDays(todayKey(),-7*b));labels.push(b===0?'This week':shortDate(ks[0]));
+      PROG_MODS.forEach((m,i)=>data[i].push(f1(avg(ks.map(k=>progressFor(k).c[m]||0)))))}
+  }else{labels=keys.map(k=>lab(k,keys.length));data=PROG_MODS.map(m=>keys.map(k=>f1(progressFor(k).c[m]||0)))}
+  mk(id,{type:'bar',data:{labels,datasets:PROG_MODS.map((m,i)=>barDS(MODS[m].label,MODS[m].c,data[i],{stack:'s',borderRadius:0,maxBarThickness:36,borderSkipped:false,borderColor:'#05060a',borderWidth:1}))},
+    options:opts({scales:{x:{stacked:true},y:{stacked:true,max:100,ticks:{callback:v=>v+'%'}}},plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.parsed.y+'%'}}}})},scope);
+}
+
+/* ----- nutrition ----- */
+function mealTotals(key){return T(key).meal}
+function nutriCard(label,cons,goal,unit,color,dec){
+  const over=goal>0&&cons>goal,left=goal-cons;
+  return '<div class="panel glass" style="--c:'+color+';padding:15px"><div class="eyebrow">'+label+'</div>'+
+    '<div style="font-size:24px;font-weight:700;margin:4px 0 2px">'+N('n-'+label,cons,dec,'<span> </span>'+unit)+'</div>'+
+    '<div style="font-size:12px;color:var(--ink2);margin-bottom:10px">Goal '+goal+' '+unit+' · '+(over?'<span style="color:var(--bad)">'+f1(-left)+' over</span>':f1(Math.max(0,left))+' left')+'</div>'+bar(goal>0?cons/goal*100:0,color,over)+'</div>';
+}
+function bucketsFor(r){
+  const end=todayKey();
+  if(r==='daily')return lastN(14).map(k=>({label:shortDate(k),keys:[k]}));
+  if(r==='weekly')return Array.from({length:8},(_,i)=>{const ks=lastN(7,addDays(end,-7*(7-i)));return{label:shortDate(ks[0]),keys:ks}});
+  return Array.from({length:6},(_,i)=>{const ks=lastN(30,addDays(end,-30*(5-i)));return{label:shortDate(ks[0]),keys:ks}});
+}
+function viewNutrition(){
+  const key=UI.viewDate,t=T(key),g=S.settings.goals,today=todayKey();
+  let h=dateBar('<button class="btn sm primary" data-act="food-new">New custom food</button>');
+  if(key!==today)h+='<div class="banner"><span>Viewing and logging meals for <b>'+longDate(key)+'</b>.</span></div>';
+  h+='<div class="sec-h"><h2>Nutrition today</h2><span class="sub">'+longDate(key)+'</span></div><div class="ngrid">'+
+    nutriCard('Calories',t.cal,g.calories,'kcal','#fbbf24',0)+nutriCard('Protein',t.prot,g.protein,'g','#22d3ee',0)+
+    nutriCard('Carbs',t.carbs,g.carbs,'g','#a78bfa',0)+nutriCard('Fat',t.fat,g.fat,'g','#fb7185',0)+nutriCard('Fiber',t.fiber,g.fiber,'g','#a3e635',1)+'</div>';
+  const kc={p:t.prot*4,c:t.carbs*4,f:t.fat*9},kt=kc.p+kc.c+kc.f;
+  h+='<div class="three" style="margin-top:16px"><section class="panel glass"><h3>Nutrition distribution</h3><div class="hint">Share of calories from each macro.</div>'+
+    (kt>0?legend([['Protein '+Math.round(kc.p/kt*100)+'%','#22d3ee'],['Carbs '+Math.round(kc.c/kt*100)+'%','#a78bfa'],['Fat '+Math.round(kc.f/kt*100)+'%','#fb7185']])+'<div class="cw"><canvas id="ch-macro"></canvas></div>':'<div class="empty">Add food to see your macro split.</div>')+'</section>'+
+    '<section class="panel glass"><h3>Meal-wise calories</h3><div class="hint">Calories logged per meal.</div>'+(t.cal>0?'<div class="cw"><canvas id="ch-mealwise"></canvas></div>':'<div class="empty">No meals logged for this day.</div>')+'</section>'+
+    '<section class="panel glass"><h3>Protein and calories, last 14 days</h3><div class="hint">Calories bars. Dashed line is your goal.</div><div class="scrollx"><div class="cw"><canvas id="ch-cal14"></canvas></div></div></section></div>';
+  h+='<div class="sec-h"><h2>Meal tracker</h2></div><div class="two eq">'+MEALS.map(([m,label])=>{
+    const list=((S.logs[key]||{}).meals||{})[m]||[],mt=t.meal[m],note=(((S.logs[key]||{}).mealNotes)||{})[m]||'';
+    return '<section class="meal panel glass"><div class="meal-h"><h3>'+label+'</h3><span class="tot">'+Math.round(mt.cal)+' kcal · '+f1(mt.prot)+' g protein</span>'+
+      '<button class="btn sm primary" data-act="meal-add" data-meal="'+m+'">Add food</button></div>'+
+      (list.length?list.map(e=>'<div class="fi"><div class="nm">'+esc(e.name)+'<small>'+esc(e.serving)+' · P '+f1(e.p*e.qty)+' C '+f1(e.c*e.qty)+' F '+f1(e.f*e.qty)+'</small></div>'+
+        '<input type="number" step="0.25" min="0.25" value="'+e.qty+'" data-chg="qty" data-meal="'+m+'" data-id="'+e.id+'" aria-label="Quantity of '+esc(e.name)+'">'+
+        '<span class="kc">'+Math.round(e.cal*e.qty)+' kcal</span><button class="x" data-act="meal-del" data-meal="'+m+'" data-id="'+e.id+'" aria-label="Remove '+esc(e.name)+'">×</button></div>').join(''):'<div class="empty" style="margin:8px 0">Nothing added to '+label.toLowerCase()+' yet.</div>')+
+      '<textarea id="note-'+m+'" data-chg="note" data-meal="'+m+'" placeholder="Notes for '+label.toLowerCase()+'" aria-label="'+label+' notes">'+esc(note)+'</textarea></section>'}).join('')+'</div>';
+  h+='<div class="sec-h"><h2>Meal analytics</h2><div class="seg" role="group" aria-label="Range">'+[['daily','Daily'],['weekly','Weekly'],['monthly','Monthly']].map(r=>'<button class="'+(UI.mealRange===r[0]?'on':'')+'" data-act="meal-range" data-r="'+r[0]+'">'+r[1]+'</button>').join('')+'</div></div>';
+  const bk=bucketsFor(UI.mealRange);
+  const allKeys=sum(bk.map(b=>b.keys.length))?bk.flatMap(b=>b.keys):[];
+  const dayAvg=fn=>{const v=allKeys.map(fn).filter(x=>x>0);return avg(v)};
+  h+='<div class="sg" style="margin-bottom:14px"><div class="st"><div class="k">Avg calories / day</div><div class="v">'+Math.round(dayAvg(k=>T(k).cal))+' kcal</div><div class="s">Logged days only</div></div>'+
+    '<div class="st"><div class="k">Avg protein / day</div><div class="v">'+Math.round(dayAvg(k=>T(k).prot))+' g</div><div class="s">Logged days only</div></div></div>';
+  h+='<div class="two eq">'+MEALS.map(([m,label])=>{
+    const ac=avg(allKeys.map(k=>T(k).meal[m]).filter(x=>x.n).map(x=>x.cal)),ap=avg(allKeys.map(k=>T(k).meal[m]).filter(x=>x.n).map(x=>x.prot));
+    return '<section class="panel glass" style="--c:'+MEAL_COL[m]+'"><h3>'+label+'</h3><div class="hint">Average <b style="color:var(--ink)">'+Math.round(ac)+' kcal</b> · <b style="color:var(--ink)">'+Math.round(ap)+' g</b> protein when logged</div><div class="scrollx"><div class="cw short"><canvas id="ch-meal-'+m+'"></canvas></div></div></section>'}).join('')+'</div>';
+  h+=foodDB();
+  return{html:h,after(){
+    if(kt>0)mk('ch-macro',{type:'doughnut',data:{labels:['Protein','Carbs','Fat'],datasets:[{data:[f1(kc.p),f1(kc.c),f1(kc.f)],backgroundColor:['#22d3ee','#a78bfa','#fb7185'],borderColor:'#0a0c14',borderWidth:3,hoverOffset:6}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{display:false},tooltip:Object.assign({},TT,{callbacks:{label:c=>c.label+': '+Math.round(c.parsed)+' kcal'}})}}});
+    if(t.cal>0)mk('ch-mealwise',{type:'bar',data:{labels:MEALS.map(x=>x[1]),datasets:[barDS('Calories',MEALS.map(x=>MEAL_COL[x[0]]),MEALS.map(x=>Math.round(t.meal[x[0]].cal)))]},
+      options:opts({plugins:{tooltip:{callbacks:{label:c=>c.parsed.y+' kcal',afterLabel:c=>f1(t.meal[MEALS[c.dataIndex][0]].prot)+' g protein'}}}})});
+    const k14=lastN(14,key);
+    mk('ch-cal14',{type:'bar',data:{labels:k14.map(k=>shortDate(k)),datasets:[barDS('Calories','#fbbf24',k14.map(k=>Math.round(T(k).cal))),goalDS(g.calories,14)]},options:opts({plugins:{tooltip:{callbacks:{afterLabel:c=>c.datasetIndex===0?f1(T(k14[c.dataIndex]).prot)+' g protein':''}}}})});
+    MEALS.forEach(([m])=>mk('ch-meal-'+m,{type:'bar',data:{labels:bk.map(b=>b.label),datasets:[barDS('Avg kcal',MEAL_COL[m],bk.map(b=>{const v=b.keys.map(k=>T(k).meal[m]).filter(x=>x.n).map(x=>x.cal);return Math.round(avg(v))}))]},options:opts({plugins:{tooltip:{callbacks:{label:c=>c.parsed.y+' kcal avg'}}}})}));
+  }};
+}
+function foodDB(){
+  const cats=Array.from(new Set(S.foods.map(f=>f.cat||'Other'))).sort();
+  const q=UI.foodQ.trim().toLowerCase();
+  const list=S.foods.filter(f=>(UI.foodCat==='all'||(f.cat||'Other')===UI.foodCat)&&(!q||(f.name+' '+f.serving+' '+f.cat).toLowerCase().includes(q))).sort((a,b)=>a.name.localeCompare(b.name));
+  return '<div class="sec-h"><h2>Food database</h2><div class="dateline"><button class="btn sm primary" data-act="food-new">Add custom food</button><button class="btn sm ghost" data-act="food-restore">Restore defaults</button></div></div>'+
+    '<section class="panel glass"><div class="row2" style="margin-bottom:12px"><div class="fld"><label for="foodQ">Search</label><input id="foodQ" type="search" data-input="foodQ" placeholder="Search foods" value="'+esc(UI.foodQ)+'"></div>'+
+    '<div class="fld"><label for="foodCat">Category</label><select id="foodCat" data-chg="foodCat"><option value="all">All categories</option>'+cats.map(c=>'<option'+(UI.foodCat===c?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select></div></div>'+
+    '<div class="hint">Default values are typical estimates for the listed serving. Edit them to match what you eat.</div><div class="tw" id="foodTable">'+foodRows(list)+'</div></section>';
+}
+function foodRows(list){
+  if(!list.length)return '<div class="empty">No foods match.</div>';
+  return '<table><thead><tr><th>Food</th><th>Serving</th><th class="r">kcal</th><th class="r">Protein</th><th class="r">Carbs</th><th class="r">Fat</th><th class="r">Fiber</th><th>Category</th><th></th></tr></thead><tbody>'+
+   list.map(f=>'<tr><td><b>'+esc(f.name)+'</b>'+(f.builtin?' <span class="tag mute">Default</span>':'')+'</td><td>'+esc(f.serving)+'</td><td class="r">'+f.cal+'</td><td class="r">'+f.p+'</td><td class="r">'+f.c+'</td><td class="r">'+f.f+'</td><td class="r">'+f.fi+'</td><td>'+esc(f.cat||'Other')+'</td>'+
+   '<td class="r"><button class="btn sm" data-act="food-edit" data-id="'+f.id+'">Edit</button> <button class="btn sm danger" data-act="food-del" data-id="'+f.id+'">Delete</button></td></tr>').join('')+'</tbody></table>';
+}
+
+/* ----- analytics ----- */
+function cbox(id,title,hint,cls,wide){
+  return '<section class="panel glass"><h3>'+title+'</h3><div class="hint">'+hint+'</div>'+(wide?'<div class="scrollx">':'')+'<div class="cw '+(cls||'')+'"><canvas id="'+id+'"></canvas></div>'+(wide?'</div>':'')+'</section>';
+}
+function viewAnalytics(){
+  const n=UI.range,keys=lastN(n),g=S.settings.goals,wide=n>14;
+  let h='<div class="sec-h"><h2>Analytics</h2><div class="seg" role="group" aria-label="Range">'+[7,14,30,90].map(r=>'<button class="'+(n===r?'on':'')+'" data-act="range" data-r="'+r+'">'+r+' days</button>').join('')+'</div></div>';
+  if(!S.startDate)h+='<div class="banner info">Charts fill in as you log activity. Nothing has been logged yet.</div>';
+  h+='<div class="two eq">'+
+    cbox('a-overall','Overall progress trend','Daily weighted progress. Dashed line marks the streak threshold.','',wide)+
+    cbox('a-running','Running trend','Kilometres per day against your goal.','',wide)+
+    cbox('a-dsa','DSA trend','Hours per day.','',wide)+
+    cbox('a-coding','Coding trend','Practice and project hours.','',wide)+
+    cbox('a-classes','Classes trend','Attended and missed classes.','',wide)+
+    cbox('a-revision','Revision trend','Hours per day.','',wide)+
+    cbox('a-cal','Calorie trend','Calories against your daily goal.','',wide)+
+    cbox('a-prot','Protein trend','Grams per day against your goal.','',wide)+
+    cbox('a-weight','Weight trend','Weigh-ins in the range. Dashed line is your target.','',wide)+
+    cbox('a-streak','Streak trend','Overall streak length at the end of each day.','',wide)+
+    '<section class="panel glass"><h3>Weekly summary</h3><div class="hint">Last 7 days, split by module.</div>'+legend(PROG_MODS.map(m=>[MODS[m].label,MODS[m].c]))+'<div class="cw"><canvas id="a-week"></canvas></div></section>'+
+    '<section class="panel glass"><h3>Monthly summary</h3><div class="hint">Average daily progress per week over the last 5 weeks.</div>'+legend(PROG_MODS.map(m=>[MODS[m].label,MODS[m].c]))+'<div class="cw"><canvas id="a-month"></canvas></div></section>'+
+    '<section class="panel glass"><h3>Where progress comes from</h3><div class="hint">Share of total progress by module in this range.</div><div class="cw"><canvas id="a-share"></canvas></div></section></div>';
+  return{html:h,after(){
+    const L=keys.map(k=>lab(k,n));
+    mk('a-overall',{type:'bar',data:{labels:L,datasets:[lineDS('Progress','#22d3ee',keys.map(k=>f1(progressFor(k).overall))),goalDS(S.settings.streakMin,n)]},options:opts({scales:{y:{max:100,ticks:{callback:v=>v+'%'}}},plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.parsed.y+'%'}}}})});
+    dayChart('a-running',keys,'running','bar','main');dayChart('a-dsa',keys,'dsa','line','main');
+    mk('a-coding',{type:'bar',data:{labels:L,datasets:[barDS('Practice',MODS.coding.c,keys.map(k=>f2(T(k).codeH)),{stack:'c',borderRadius:0}),barDS('Project','#a78bfa',keys.map(k=>f2(T(k).projH)),{stack:'c',borderRadius:0})]},options:opts({scales:{x:{stacked:true},y:{stacked:true}}})});
+    mk('a-classes',{type:'bar',data:{labels:L,datasets:[barDS('Attended',MODS.classes.c,keys.map(k=>T(k).clsAtt),{stack:'c',borderRadius:0}),barDS('Missed','#fb7185',keys.map(k=>T(k).clsMiss),{stack:'c',borderRadius:0})]},options:opts({scales:{x:{stacked:true},y:{stacked:true,ticks:{precision:0}}}})});
+    dayChart('a-revision',keys,'revision','line','main');
+    dayChart('a-cal',keys,'diet','line','main');
+    mk('a-prot',{type:'bar',data:{labels:L,datasets:[barDS('Protein','#22d3ee',keys.map(k=>Math.round(T(k).prot))),goalDS(g.protein,n)]},options:opts({plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.parsed.y+' g'}}}})});
+    const wi=weightInfo();
+    mk('a-weight',{type:'bar',data:{labels:L,datasets:[lineDS('Weight',MODS.weight.c,keys.map(k=>{const w=weightOn(k);return w?w.kg:null}),{spanGaps:true,pointRadius:4,fill:false}),
+      ...(wi.target!=null?[goalDS(wi.target,n)]:[])]},options:opts({scales:{y:{beginAtZero:false}},plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+': '+f1(c.parsed.y)+' kg'}}}})});
+    mk('a-streak',{type:'bar',data:{labels:L,datasets:[lineDS('Streak','#fbbf24',overallStreakSeries(keys),{stepped:true,tension:0})]},options:opts({scales:{y:{ticks:{precision:0}}}})});
+    weeklyStack('a-week',lastN(7));weeklyStack('a-month',null,'main',true);
+    const share=PROG_MODS.map(m=>f1(sum(keys.map(k=>progressFor(k).c[m]||0))));
+    mk('a-share',{type:'doughnut',data:{labels:PROG_MODS.map(m=>MODS[m].label),datasets:[{data:share,backgroundColor:PROG_MODS.map(m=>MODS[m].c),borderColor:'#0a0c14',borderWidth:3,hoverOffset:6}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'58%',plugins:{legend:{display:true,position:'right',labels:{color:'#a6aec3',boxWidth:10,boxHeight:10,padding:12}},tooltip:Object.assign({},TT)}}});
+  }};
+}
+
+/* ----- timeline ----- */
+function viewTimeline(){
+  const types=[['all','All'],['running','Running'],['dsa','DSA'],['coding','Coding'],['classes','Classes'],['revision','Revision'],['diet','Meals'],['water','Water'],['weight','Weight'],['system','System']];
+  const all=S.timeline.filter(e=>UI.tlFilter==='all'||e.type===UI.tlFilter).sort((a,b)=>b.ts-a.ts);
+  const list=all.slice(0,UI.tlMax);
+  let h='<div class="sec-h"><h2>Activity timeline</h2><span class="sub">'+all.length+' event'+(all.length===1?'':'s')+'</span></div><div class="chips" style="margin-bottom:12px">'+
+    types.map(t=>'<button class="chip'+(UI.tlFilter===t[0]?' on':'')+'" data-act="tl-filter" data-t="'+t[0]+'">'+t[1]+'</button>').join('')+'</div><section class="panel glass">';
+  if(!list.length)h+='<div class="empty">No activity yet. Everything you log appears here with its time.</div>';
+  else{let day='';list.forEach(e=>{const dk=keyOf(new Date(e.ts));
+    if(dk!==day){day=dk;h+='<div class="tl-day">'+(dk===todayKey()?'Today · ':dk===addDays(todayKey(),-1)?'Yesterday · ':'')+longDate(dk)+'</div>'}
+    h+=feedItems([e])})}
+  if(all.length>list.length)h+='<div style="margin-top:14px;text-align:center"><button class="btn" data-act="tl-more">Show more</button></div>';
+  return{html:h+'</section>',after(){}};
+}
+
+/* ----- settings ----- */
+function numField(id,label,val,o){o=o||{};
+  return '<div class="fld"><label for="'+id+'">'+label+'</label><input id="'+id+'" name="'+id+'" type="number" step="'+(o.step||'any')+'" min="'+(o.min==null?0:o.min)+'"'+(o.max!=null?' max="'+o.max+'"':'')+' value="'+(val==null?'':val)+'"'+(o.ph?' placeholder="'+o.ph+'"':'')+(o.req?' required':'')+'>'+(o.help?'<div class="help">'+o.help+'</div>':'')+'</div>'}
+function viewSettings(){
+  const g=S.settings.goals,w=S.settings.weights,b=S.settings.body,tot=sum(PROG_MODS.map(m=>w[m]));
+  let h='<div class="sec-h"><h2>Settings</h2></div><div class="two eq">';
+  h+='<section class="panel glass"><h3>Goals and targets</h3><div class="hint">Daily targets drive every progress ring. Set a target to 0 to leave that module out of overall progress.</div>'+
+   '<form class="form" data-form="goals" id="goalsForm"><div class="row2">'+
+   numField('runKm','Running (km / day)',g.runKm)+numField('dsaH','DSA (hours / day)',g.dsaH)+numField('codingH','Coding (hours / day)',g.codingH)+
+   numField('classes','Classes planned / day',g.classes,{step:1})+numField('revisionH','Revision (hours / day)',g.revisionH)+numField('waterL','Water (litres / day)',g.waterL)+'</div>'+
+   '<div class="eyebrow" style="margin-top:4px">Nutrition goals</div><div class="row2">'+
+   numField('calories','Calories (kcal)',g.calories)+numField('protein','Protein (g)',g.protein)+numField('carbs','Carbs (g)',g.carbs)+numField('fat','Fat (g)',g.fat)+numField('fiber','Fiber (g)',g.fiber)+'</div>'+
+   '<div class="eyebrow" style="margin-top:4px">Body</div><div class="row2">'+
+   numField('targetWeight','Target weight (kg)',b.targetWeight,{min:20,max:400,ph:'Not set'})+numField('startWeight','Start weight (kg)',b.startWeight,{min:20,max:400,ph:'First logged',help:'Leave blank to use your first weigh-in.'})+numField('heightCm','Height (cm)',b.heightCm,{min:50,max:260,ph:'For BMI'})+'</div>'+
+   '<div class="eyebrow" style="margin-top:4px">Streaks</div><div class="row2">'+numField('streakMin','Streak threshold (% progress)',S.settings.streakMin,{max:100,help:'A day extends the Overall streak at or above this.'})+'</div>'+
+   '<div class="err" id="goalsErr"></div><div class="form-actions"><button class="btn primary" type="submit">Save goals</button></div></form></section>';
+  h+='<div style="display:grid;gap:16px;align-content:start;min-width:0"><section class="panel glass"><h3>Progress weights</h3><div class="hint">How much each module counts toward overall progress. The total must be exactly 100%.</div>'+
+   '<form class="form" data-form="weights" id="wform"><div class="row2">'+PROG_MODS.map(m=>'<div class="fld"><label for="w-'+m+'">'+MODS[m].label+' (%)</label><input id="w-'+m+'" name="'+m+'" type="number" min="0" max="100" step="1" value="'+w[m]+'" data-input="wsum"></div>').join('')+'</div>'+
+   '<div class="wtotal '+(tot===100?'ok':'no')+'" id="wtotal">Total '+tot+'% '+(tot===100?'· valid':'· must equal 100%')+'</div>'+
+   '<div class="form-actions"><button class="btn" type="button" data-act="bal">Balance to 100%</button><button class="btn primary" type="submit" id="wsave"'+(tot===100?'':' disabled')+'>Save weights</button></div></form></section>'+
+   '<section class="panel glass"><h3>Theme</h3><div class="hint">Dark mode only. Choose the neon accent.</div><div class="swatches">'+
+   Object.keys(ACCENTS).map(a=>'<button class="sw'+(S.settings.accent===a?' on':'')+'" style="--s:'+ACCENTS[a][1]+'" data-act="accent" data-a="'+a+'" aria-label="'+a+' accent" title="'+a+'"></button>').join('')+'</div></section>'+
+   '<section class="panel glass"><h3>Data</h3><div class="hint">'+(storageOK?'Saved in this browser.':'<span style="color:var(--warn)">Browser storage is unavailable here, so data lasts for this session only. Back up before closing.</span>')+' Exports open as text you can copy. Importing replaces your current data.</div>'+
+   '<div class="chips"><button class="btn" data-act="export-json">Export JSON</button><button class="btn" data-act="export-csv">Export CSV</button><button class="btn" data-act="import">Import JSON</button><button class="btn" data-act="backup">Backup all data</button><button class="btn" data-act="restore">Restore data</button>'+
+   '<button class="btn danger" data-act="reset">'+(UI.confirm==='reset'?'Click again to erase everything':'Reset data')+'</button></div></section></div></div>';
+  return{html:h,after(){}};
+}
+
+/* ----- detail modal ----- */
+function statGrid(a){return '<div class="sg">'+a.map(x=>'<div class="st"><div class="k">'+x[0]+'</div><div class="v">'+x[1]+'</div>'+(x[2]?'<div class="s">'+x[2]+'</div>':'')+'</div>').join('')+'</div>'}
+function allEntries(m,limit){
+  const out=[];Object.keys(S.logs).sort().reverse().forEach(k=>{
+    if(m==='diet'){const ml=S.logs[k].meals||{};MEALS.forEach(([mm])=>(ml[mm]||[]).forEach(e=>out.push({k,e,meal:mm})))}
+    else(S.logs[k][m]||[]).forEach(e=>out.push({k,e}))});
+  out.sort((a,b)=>a.k===b.k?b.e.ts-a.e.ts:(a.k<b.k?1:-1));return out.slice(0,limit||40);
+}
+function entryText(m,e){
+  switch(m){
+    case 'running':return f1(e.km)+' km'+(e.min?' · '+f1(e.min)+' min · '+paceStr(e.min,e.km)+'/km':'')+(e.cal?' · '+e.cal+' kcal':'');
+    case 'dsa':return fmtH(e.h||0)+(e.topic?' · '+e.topic:'')+((e.easy||e.med||e.hard)?' · '+(e.easy||0)+'E '+(e.med||0)+'M '+(e.hard||0)+'H':'')+(e.notes?' · "'+e.notes+'"':'');
+    case 'coding':return fmtH(e.h||0)+(e.projH?' + '+fmtH(e.projH)+' project':'')+(e.n?' · '+e.n+' solved':'')+(e.platform?' · '+e.platform:'')+(e.lang?' · '+e.lang:'');
+    case 'classes':return (e.att||0)+' attended'+(e.miss?' · '+e.miss+' missed':'')+(e.h?' · '+fmtH(e.h):'')+(e.notes?' · '+e.notes+' notes':'');
+    case 'revision':return fmtH(e.h||0)+(e.subject?' · '+e.subject:'')+(e.topics?' · '+e.topics:'');
+    case 'water':return e.ml+' ml';
+    case 'diet':return e.name+' ×'+e.qty+' · '+Math.round(e.cal*e.qty)+' kcal';
+  }
+  return '';
+}
+function entriesPanel(m,title){
+  const list=allEntries(m,30);
+  return '<section class="panel glass"><h3>'+(title||'History')+'</h3><div class="hint">Most recent entries across all days.</div>'+
+   (list.length?list.map(x=>'<div class="ent"><div class="t">'+esc(entryText(m,x.e))+'<div class="d">'+shortDate(x.k)+' · '+fmtTime(x.e.ts)+(x.meal?' · '+x.meal:'')+'</div></div><button class="x" data-act="del-entry" data-m="'+m+'" data-k="'+x.k+'" data-id="'+x.e.id+'"'+(x.meal?' data-meal="'+x.meal+'"':'')+' aria-label="Delete entry">×</button></div>').join(''):'<div class="empty">No entries yet.</div>')+'</section>';
+}
+function tally(m,fn){ // aggregate {name:{h,n}} across all logs
+  const r={};Object.keys(S.logs).forEach(k=>(S.logs[k][m]||[]).forEach(e=>fn(e,(name,h,n)=>{if(!name)return;const x=r[name]||(r[name]={h:0,n:0});x.h+=h;x.n+=n})));return r}
+function chipsFrom(obj,unit){
+  const a=Object.entries(obj).sort((x,y)=>y[1].h-x[1].h||y[1].n-x[1].n);
+  return a.length?'<div class="chips">'+a.map(([k,v])=>'<span class="chip">'+esc(k)+' <b>'+(unit==='n'?v.n:fmtH(v.h))+'</b></span>').join('')+'</div>':'<div class="empty">Nothing recorded yet.</div>';
+}
+function donutFrom(id,obj,key){
+  const a=Object.entries(obj).sort((x,y)=>y[1][key]-x[1][key]).slice(0,8);if(!a.length)return;
+  const pal=['#22d3ee','#a78bfa','#fbbf24','#fb7185','#a3e635','#6c8cff','#fb923c','#5eead4'];
+  mk(id,{type:'doughnut',data:{labels:a.map(x=>x[0]),datasets:[{data:a.map(x=>f2(x[1][key])),backgroundColor:pal,borderColor:'#0a0c14',borderWidth:3,hoverOffset:6}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'58%',plugins:{legend:{display:true,position:'right',labels:{color:'#a6aec3',boxWidth:10,boxHeight:10,padding:10}},tooltip:Object.assign({},TT)}}},'detail');
+}
+function detailHTML(m){
+  const key=UI.viewDate,t=T(key),g=S.settings.goals,d=cardData(m,key),M=MODS[m],wk=lastN(7,key),mo=lastN(30,key);
+  const dtotal=(fn,keys)=>sum(keys.map(k=>fn(T(k))));
+  const two=(a,b)=>'<div class="two eq" style="margin-top:16px">'+a+b+'</div>';
+  const day=h=>'<div class="sub" style="color:var(--mute);margin-bottom:10px">'+longDate(key)+'</div>'+h;
+  let html,after;
+  switch(m){
+    case 'running':{
+      let best=0,bestK='';Object.keys(S.logs).forEach(k=>{const b=T(k).bestRun;if(b>best){best=b;bestK=k}});
+      html=day(statGrid([['Distance goal',g.runKm+' km'],['Completed',f1(t.runKm)+' km'],['Remaining',f1(Math.max(0,g.runKm-t.runKm))+' km'],['Time',t.runMin?f1(t.runMin)+' min':'–'],['Pace',paceStr(t.runMin,t.runKm)+(t.runMin&&t.runKm?' /km':'')],['Calories burned',Math.round(t.runCal)+' kcal'],
+        ['Weekly total',f1(dtotal(x=>x.runKm,wk))+' km','Last 7 days'],['Monthly total',f1(dtotal(x=>x.runKm,mo))+' km','Last 30 days'],['Best run',best?f1(best)+' km':'–',bestK?shortDate(bestK):'']]))+
+        two(cbox('d-w','Weekly chart','Kilometres per day.'),cbox('d-m','Monthly chart','Last 30 days.','',true))+'<div style="margin-top:16px">'+entriesPanel('running','Run history')+'</div>';
+      after=()=>{dayChart('d-w',wk,'running','bar','detail');dayChart('d-m',mo,'running','line','detail')};break}
+    case 'dsa':{
+      const tp=tally('dsa',(e,add)=>add(e.topic,e.h||0,(e.easy||0)+(e.med||0)+(e.hard||0)));
+      let E=0,Mm=0,H=0,hrs=0;Object.keys(S.logs).forEach(k=>{const x=T(k);E+=x.easy;Mm+=x.med;H+=x.hard;hrs+=x.dsaH});
+      const notes=allEntries('dsa',60).filter(x=>x.e.notes).slice(0,6);
+      html=day(statGrid([['Target hours',fmtH(g.dsaH)],['Completed',fmtH(t.dsaH)],['Remaining',fmtH(Math.max(0,g.dsaH-t.dsaH))],['Problems solved',t.dsaN],['Easy',t.easy],['Medium',t.med],['Hard',t.hard],['Progress',Math.round(d.pct)+'%'],['All-time hours',fmtH(hrs),E+Mm+H+' problems · '+E+'E '+Mm+'M '+H+'H'],['Topics covered',Object.keys(tp).length]]))+
+        two(cbox('d-w','Weekly graph','Hours per day against target.'),'<section class="panel glass"><h3>Topic analytics</h3><div class="hint">Hours by topic, all time.</div>'+(Object.keys(tp).length?'<div class="cw"><canvas id="d-t"></canvas></div>':'<div class="empty">Add a topic when you log DSA time.</div>')+'</section>')+
+        '<section class="panel glass" style="margin-top:16px"><h3>Topics covered</h3>'+chipsFrom(tp)+'</section>'+
+        '<section class="panel glass" style="margin-top:16px"><h3>Notes</h3>'+(notes.length?notes.map(x=>'<div class="ent"><div class="t">'+esc(x.e.notes)+'<div class="d">'+shortDate(x.k)+(x.e.topic?' · '+esc(x.e.topic):'')+'</div></div></div>').join(''):'<div class="empty">Notes you add while logging show up here.</div>')+'</section>'+
+        '<div style="margin-top:16px">'+entriesPanel('dsa')+'</div>';
+      after=()=>{dayChart('d-w',wk,'dsa','bar','detail');donutFrom('d-t',tp,'h')};break}
+    case 'coding':{
+      const pl=tally('coding',(e,add)=>add(e.platform,(e.h||0)+(e.projH||0),e.n||0)),lg=tally('coding',(e,add)=>add(e.lang,(e.h||0)+(e.projH||0),e.n||0));
+      html=day(statGrid([['Hours practiced',fmtH(t.codeH)],['Project hours',fmtH(t.projH)],['Target',fmtH(g.codingH)],['Problems solved',t.codeN],['Progress',Math.round(d.pct)+'%'],['Weekly hours',fmtH(dtotal(x=>x.codeH+x.projH,wk)),'Last 7 days'],['Monthly hours',fmtH(dtotal(x=>x.codeH+x.projH,mo)),'Last 30 days']]))+
+        two(cbox('d-w','Weekly chart','Hours per day.'),cbox('d-m','Monthly chart','Last 30 days.','',true))+
+        two('<section class="panel glass"><h3>Platforms used</h3>'+chipsFrom(pl)+'</section>','<section class="panel glass"><h3>Languages used</h3>'+(Object.keys(lg).length?'<div class="cw short"><canvas id="d-l"></canvas></div>':'<div class="empty">Add a language when logging.</div>')+'</section>')+
+        '<div style="margin-top:16px">'+entriesPanel('coding')+'</div>';
+      after=()=>{dayChart('d-w',wk,'coding','bar','detail');dayChart('d-m',mo,'coding','line','detail');donutFrom('d-l',lg,'h')};break}
+    case 'classes':{
+      let att=0,miss=0;mo.forEach(k=>{att+=T(k).clsAtt;miss+=T(k).clsMiss});const ap=att+miss?Math.round(att/(att+miss)*100):0;
+      html=day(statGrid([['Classes planned',g.classes],['Attended',t.clsAtt],['Missed',t.clsMiss],['Hours completed',fmtH(t.clsH)],['Notes completed',t.clsNotes],['Progress',Math.round(d.pct)+'%'],['Attendance',(att+miss?ap+'%':'–'),'Last 30 days']]))+
+        two(cbox('d-w','Weekly chart','Attended and missed.'),cbox('d-m','Monthly attendance','Attended per day, last 30 days.','',true))+'<div style="margin-top:16px">'+entriesPanel('classes')+'</div>';
+      after=()=>{mk('d-w',{type:'bar',data:{labels:wk.map(k=>wday(k)),datasets:[barDS('Attended',M.c,wk.map(k=>T(k).clsAtt),{stack:'c',borderRadius:0}),barDS('Missed','#fb7185',wk.map(k=>T(k).clsMiss),{stack:'c',borderRadius:0})]},options:opts({scales:{x:{stacked:true},y:{stacked:true,ticks:{precision:0}}}})},'detail');
+        mk('d-m',{type:'bar',data:{labels:mo.map(k=>shortDate(k)),datasets:[lineDS('Attended',M.c,mo.map(k=>T(k).clsAtt))]},options:opts({scales:{y:{ticks:{precision:0}}}})},'detail')};break}
+    case 'revision':{
+      const sb=tally('revision',(e,add)=>add(e.subject,e.h||0,topicList(e.topics).length));
+      html=day(statGrid([['Target hours',fmtH(g.revisionH)],['Completed',fmtH(t.revH)],['Remaining',fmtH(Math.max(0,g.revisionH-t.revH))],['Topics revised',t.revTopics],['Progress',Math.round(d.pct)+'%'],['Subjects',Object.keys(sb).length],['Weekly hours',fmtH(dtotal(x=>x.revH,wk))],['Monthly hours',fmtH(dtotal(x=>x.revH,mo))]]))+
+        two(cbox('d-w','Revision graph','Hours per day, last 7 days.'),cbox('d-m','Monthly graph','Last 30 days.','',true))+
+        '<section class="panel glass" style="margin-top:16px"><h3>Subjects</h3>'+chipsFrom(sb)+'</section><div style="margin-top:16px">'+entriesPanel('revision')+'</div>';
+      after=()=>{dayChart('d-w',wk,'revision','bar','detail');dayChart('d-m',mo,'revision','line','detail')};break}
+    case 'diet':{
+      html=day(statGrid([['Calorie goal',g.calories+' kcal'],['Consumed',Math.round(t.cal)+' kcal'],['Remaining',Math.round(g.calories-t.cal)+' kcal'],['Protein',Math.round(t.prot)+' / '+g.protein+' g'],['Carbs',Math.round(t.carbs)+' g'],['Fat',Math.round(t.fat)+' g'],['Fiber',f1(t.fiber)+' g'],['Diet score',Math.round(d.pct)+'%','Protein and calorie fit']]))+
+        two(cbox('d-w','Calories, last 7 days','Dashed line is your goal.'),cbox('d-m','Calories, last 30 days','','',true))+
+        '<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-act="nav" data-v="nutrition">Open meal tracker</button></div><div style="margin-top:16px">'+entriesPanel('diet','Foods logged')+'</div>';
+      after=()=>{dayChart('d-w',wk,'diet','bar','detail');dayChart('d-m',mo,'diet','line','detail')};break}
+    case 'water':{
+      const vals=mo.map(k=>T(k).waterMl).filter(x=>x>0);
+      html=day(statGrid([['Today',Math.round(t.waterMl)+' ml'],['Goal',Math.round(g.waterL*1000)+' ml'],['Remaining',Math.round(Math.max(0,g.waterL*1000-t.waterMl))+' ml'],['Progress',Math.round(d.pct)+'%'],['Daily average',Math.round(avg(vals))+' ml','Logged days, last 30'],['Best day',vals.length?Math.max.apply(null,vals)+' ml':'–']]))+
+        two(cbox('d-w','Weekly chart','Litres per day.'),cbox('d-m','Monthly chart','Last 30 days.','',true))+
+        '<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-act="log" data-m="water">Add custom amount</button></div><div style="margin-top:16px">'+entriesPanel('water')+'</div>';
+      after=()=>{dayChart('d-w',wk,'water','bar','detail');dayChart('d-m',mo,'water','line','detail')};break}
+    case 'weight':{
+      const wi=weightInfo(),ws=sortedWeights();
+      const cat=wi.bmi==null?'':wi.bmi<18.5?'Below healthy range':wi.bmi<25?'Healthy range':wi.bmi<30?'Above healthy range':'Well above healthy range';
+      html=statGrid([['Current weight',wi.cur!=null?f1(wi.cur)+' kg':'–'],['Target weight',wi.target!=null?wi.target+' kg':'Not set'],['Weight lost',wi.count?f1(wi.lost)+' kg':'–','From '+(wi.start!=null?f1(wi.start)+' kg':'–')],['Weight remaining',wi.remaining!=null?f1(wi.remaining)+' kg':'–'],['BMI',wi.bmi?f1(wi.bmi):(S.settings.body.heightCm?'–':'Set height'),cat],
+        ['Weekly change',wi.weekly!=null?(wi.weekly>=0?'-':'+')+f1(Math.abs(wi.weekly))+' kg':'–','Last 7 days'],['Monthly change',wi.monthly!=null?(wi.monthly>=0?'-':'+')+f1(Math.abs(wi.monthly))+' kg':'–','Last 30 days'],['Progress to goal',Math.round(wi.pct*100)+'%']])+
+        '<section class="panel glass" style="margin-top:16px"><h3>Weight trend</h3><div class="hint">All weigh-ins. Dashed line is your target.</div>'+(ws.length?'<div class="scrollx"><div class="cw tall"><canvas id="d-w"></canvas></div></div>':'<div class="empty">Log your first weight to see the trend.</div>')+'</section>'+
+        '<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-act="log" data-m="weight">Log weight</button><button class="btn" data-act="nav" data-v="settings">Edit target and height</button></div>'+
+        '<section class="panel glass" style="margin-top:16px"><h3>Weigh-ins</h3>'+(ws.length?ws.slice().reverse().slice(0,40).map(w=>'<div class="ent"><div class="t"><b>'+f1(w.kg)+' kg</b><div class="d">'+shortDate(w.date)+' · '+fmtTime(w.ts)+'</div></div><button class="x" data-act="del-weight" data-id="'+w.id+'" aria-label="Delete weigh-in">×</button></div>').join(''):'<div class="empty">No weigh-ins yet.</div>')+'</section>';
+      after=()=>{if(!ws.length)return;mk('d-w',{type:'line',data:{labels:ws.map(w=>shortDate(w.date)),datasets:[lineDS('Weight',M.c,ws.map(w=>w.kg),{pointRadius:4}),...(wi.target!=null?[goalDS(wi.target,ws.length)]:[])]},options:opts({scales:{y:{beginAtZero:false}},plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+': '+f1(c.parsed.y)+' kg'}}}})},'detail')};break}
+  }
+  return{html:'<div class="modal big glass" role="dialog" aria-modal="true" aria-label="'+M.label+' details" style="--c:'+M.c+';--cr:'+M.cr+'"><div class="m-head"><h2><span class="ico" style="--cr:'+M.cr+';--c:'+M.c+'">'+M.ico+'</span>'+M.label+' details</h2><div class="dateline">'+(m!=='weight'&&m!=='diet'?'<button class="btn sm primary" data-act="log" data-m="'+m+'">'+(m==='classes'?'Log classes':'Log entry')+'</button>':'')+'<button class="btn ghost sm" data-act="close">Close</button></div></div>'+html+'</div>',after};
+}
+function renderDetail(){
+  const ov=$('#ov');
+  if(!UI.detail){ov.hidden=true;ov.innerHTML='';killCharts('detail');syncLock();return}
+  const sc=($('.modal',ov)||{}).scrollTop||0;
+  killCharts('detail');
+  const d=detailHTML(UI.detail);ov.innerHTML=d.html;ov.hidden=false;
+  const mo=$('.modal',ov);if(mo)mo.scrollTop=sc;
+  d.after();animateNums(ov);afterPaint(ov);syncLock();
+}
+function syncLock(){document.body.style.overflow=(!$('#ov').hidden||!$('#ov2').hidden)?'hidden':''}
+
+function render(animate){
+  killCharts('main');
+  renderHero();renderNav();
+  const v=({dash:viewDash,nutrition:viewNutrition,analytics:viewAnalytics,timeline:viewTimeline,settings:viewSettings})[UI.view]();
+  const el=$('#view');el.className=animate?'enter':'';el.innerHTML=v.html;
+  v.after();animateNums(document);afterPaint(document);
+  if(UI.detail)renderDetail();
+}
+let lastDay=todayKey();
+function tick(){
+  const d=new Date(),c=$('#h-clock');
+  if(c)c.textContent=d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  if(keyOf(d)!==lastDay){const wasToday=UI.viewDate===lastDay;lastDay=keyOf(d);tc={};if(wasToday)UI.viewDate=lastDay;render()}
+}
+function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>{t.hidden=true},2400)}
+function applyAccent(){
+  const a=ACCENTS[S.settings.accent]||ACCENTS.cyan,r=document.documentElement.style;
+  r.setProperty('--accent-rgb',a[0]);r.setProperty('--accent',a[1]);r.setProperty('--accent2',a[2]);
+}
+
+/* ---------- 8. forms, actions, data ---------- */
+function commit(key,type,title,detail,isAct){
+  tc={};
+  if(key){
+    if(isAct!==false&&(!S.startDate||key<S.startDate))S.startDate=key;
+    S.snap[key]=progressLive(key);
+  }
+  if(title)S.timeline.push({id:uid(),ts:Date.now(),date:key,type:type,title:title,detail:(detail||'')+(key&&key!==todayKey()?' (for '+shortDate(key)+')':'')});
+  if(S.timeline.length>6000)S.timeline.splice(0,S.timeline.length-6000);
+  save();render();
+}
+function pushEntry(mod,key,entry){const l=S.logs[key]||(S.logs[key]={});(l[mod]||(l[mod]=[])).push(Object.assign({id:uid(),ts:Date.now()},entry))}
+function setWeight(key,kg){
+  S.weights=S.weights.filter(w=>w.date!==key);
+  S.weights.push({id:uid(),date:key,kg:f2(kg),ts:Date.now()});
+  commit(key,'weight','Weight Updated',f1(kg)+' kg');
+}
+function openOv2(html){const o=$('#ov2');o.innerHTML=html;o.hidden=false;syncLock();const f=$('input:not([type=hidden]):not([readonly]),textarea,select',o);if(f&&matchMedia('(min-width:700px)').matches)f.focus()}
+function closeOv2(){const o=$('#ov2');o.hidden=true;o.innerHTML='';syncLock()}
+function closeTop(){if(!$('#ov2').hidden)closeOv2();else if(UI.detail){UI.detail=null;renderDetail()}}
+function closeAll(){closeOv2();UI.detail=null;renderDetail()}
+
+const dl=(id,items)=>'<datalist id="'+id+'">'+Array.from(new Set(items)).map(x=>'<option value="'+esc(x)+'"></option>').join('')+'</datalist>';
+function history(m,field,defaults){const s=new Set(defaults||[]);Object.keys(S.logs).forEach(k=>(S.logs[k][m]||[]).forEach(e=>{if(e[field])s.add(e[field])}));return Array.from(s)}
+const dateFld=()=>'<div class="fld"><label for="f-date">Date</label><input id="f-date" name="date" type="date" value="'+UI.viewDate+'" max="'+todayKey()+'" required></div>';
+const fld=(id,label,type,o)=>{o=o||{};return '<div class="fld"><label for="'+id+'">'+label+'</label><input id="'+id+'" name="'+id+'" type="'+(type||'number')+'"'+(type==='number'||!type?' step="'+(o.step||'any')+'" min="'+(o.min==null?0:o.min)+'"':'')+(o.val!=null?' value="'+esc(o.val)+'"':'')+(o.list?' list="'+o.list+'"':'')+(o.ph?' placeholder="'+esc(o.ph)+'"':'')+(o.req?' required':'')+' autocomplete="off">'+(o.help?'<div class="help">'+o.help+'</div>':'')+'</div>'};
+function formShell(mod,title,body,submit){
+  const M=MODS[mod]||{};
+  return '<div class="modal glass" role="dialog" aria-modal="true" aria-label="'+esc(title)+'"><div class="m-head"><h2>'+(M.ico?'<span class="ico" style="--cr:'+M.cr+';--c:'+M.c+'">'+M.ico+'</span>':'')+esc(title)+'</h2><button class="btn ghost sm" type="button" data-act="close2">Close</button></div>'+
+   '<form class="form" data-form="'+mod+'" novalidate>'+body+'<div class="err" id="f-err" role="alert"></div><div class="form-actions"><button class="btn" type="button" data-act="close2">Cancel</button><button class="btn primary" type="submit">'+submit+'</button></div></form></div>';
+}
+function openForm(m){
+  let body='',title='',sub='Save';
+  switch(m){
+    case 'running':title='Log a run';body=dateFld()+'<div class="row2">'+fld('km','Distance (km)','number',{req:1,ph:'e.g. 3.2'})+fld('min','Time (minutes)','number',{ph:'e.g. 24',help:'Optional. Used for pace.'})+'</div><div class="help" style="color:var(--mute);font-size:12px">Calories are estimated from your latest weight ('+(weightInfo().cur!=null?f1(weightInfo().cur)+' kg':'70 kg assumed')+').</div>';break;
+    case 'dsa':title='Log DSA';body=dateFld()+'<div class="row2">'+fld('h','Hours studied','number',{req:1})+fld('topic','Topic','text',{list:'dl-topic',ph:'e.g. Binary Search'})+'</div><div class="row2">'+fld('easy','Easy solved','number',{step:1,val:0})+fld('med','Medium solved','number',{step:1,val:0})+fld('hard','Hard solved','number',{step:1,val:0})+'</div><div class="fld"><label for="notes">Notes</label><textarea id="notes" name="notes" rows="3" placeholder="What did you learn?"></textarea></div>'+dl('dl-topic',history('dsa','topic',['Arrays','Strings','Hashing','Linked List','Stack','Queue','Recursion','Binary Search','Sorting','Trees','Graphs','Dynamic Programming']));break;
+    case 'coding':title='Log coding';body=dateFld()+'<div class="row2">'+fld('h','Hours practiced','number',{ph:'0'})+fld('projH','Project hours','number',{ph:'0'})+fld('n','Problems solved','number',{step:1,val:0})+'</div><div class="row2">'+fld('platform','Platform','text',{list:'dl-plat',ph:'e.g. LeetCode'})+fld('lang','Language','text',{list:'dl-lang',ph:'e.g. Python'})+'</div>'+dl('dl-plat',history('coding','platform',['LeetCode','Codeforces','CodeChef','GeeksforGeeks','HackerRank','AtCoder']))+dl('dl-lang',history('coding','lang',['Python','C++','Java','JavaScript','C']));break;
+    case 'classes':title='Log classes';body=dateFld()+'<div class="row2">'+fld('att','Classes attended','number',{step:1,val:1})+fld('miss','Classes missed','number',{step:1,val:0})+fld('h','Hours completed','number',{ph:'0'})+fld('notes','Notes completed','number',{step:1,val:0})+'</div>';break;
+    case 'revision':title='Log revision';body=dateFld()+'<div class="row2">'+fld('h','Hours revised','number',{req:1})+fld('subject','Subject','text',{list:'dl-sub',ph:'e.g. Linear Algebra'})+'</div>'+fld('topics','Topics revised','text',{ph:'Comma separated, e.g. Eigenvalues, Determinants'})+dl('dl-sub',history('revision','subject'));break;
+    case 'water':title='Add water';body=dateFld()+fld('ml','Amount (ml)','number',{req:1,step:10,ph:'e.g. 330'});break;
+    case 'weight':{const w=weightAt(UI.viewDate);title='Log weight';body=dateFld()+fld('kg','Weight (kg)','number',{req:1,min:20,val:w?w.kg:'',ph:'e.g. 78.4'});break}
+    default:return;
+  }
+  openOv2(formShell(m,title,body,sub));
+}
+function handleForm(name,fd,form){
+  const err=msg=>{const e=$('#f-err',form);if(e)e.textContent=msg;return false};
+  const key=fd.get('date')||UI.viewDate;
+  if(key>todayKey())return err('Choose today or an earlier date.');
+  const n=k=>num(fd.get(k),0),s=k=>String(fd.get(k)||'').trim();
+  switch(name){
+    case 'running':{const km=n('km'),min=n('min');if(!(km>0))return err('Enter a distance above 0.');
+      pushEntry('running',key,{km:f2(km),min:min,cal:kcalRun(km)});commit(key,'running','Running Logged',f1(km)+' km'+(min?' in '+f1(min)+' min':''));break}
+    case 'dsa':{const h=n('h'),e=Math.round(n('easy')),m=Math.round(n('med')),hd=Math.round(n('hard'));if(!(h>0)&&!(e+m+hd>0))return err('Enter hours or at least one solved problem.');
+      pushEntry('dsa',key,{h:h,easy:e,med:m,hard:hd,topic:s('topic'),notes:s('notes')});commit(key,'dsa','DSA Updated',fmtH(h)+(s('topic')?' · '+s('topic'):'')+(e+m+hd?' · '+(e+m+hd)+' solved':''));break}
+    case 'coding':{const h=n('h'),p=n('projH'),c=Math.round(n('n'));if(!(h+p+c>0))return err('Enter hours, project hours or problems solved.');
+      pushEntry('coding',key,{h:h,projH:p,n:c,platform:s('platform'),lang:s('lang')});commit(key,'coding','Coding Logged',fmtH(h+p)+(c?' · '+c+' solved':'')+(s('platform')?' · '+s('platform'):''));break}
+    case 'classes':{const a=Math.round(n('att')),mi=Math.round(n('miss'));if(!(a+mi>0))return err('Enter attended or missed classes.');
+      pushEntry('classes',key,{att:a,miss:mi,h:n('h'),notes:Math.round(n('notes'))});commit(key,'classes','Classes Updated',a+' attended'+(mi?', '+mi+' missed':''));break}
+    case 'revision':{const h=n('h');if(!(h>0))return err('Enter the hours you revised.');
+      pushEntry('revision',key,{h:h,subject:s('subject'),topics:s('topics')});commit(key,'revision','Revision Logged',fmtH(h)+(s('subject')?' · '+s('subject'):''));break}
+    case 'water':{const ml=n('ml');if(!(ml>0))return err('Enter an amount above 0.');
+      pushEntry('water',key,{ml:Math.round(ml)});commit(key,'water','Water Added',Math.round(ml)+' ml');break}
+    case 'weight':{const kg=n('kg');if(!(kg>=20&&kg<=400))return err('Enter a weight between 20 and 400 kg.');setWeight(key,kg);break}
+    case 'food':return saveFood(fd,form);
+    case 'addfood':return addFoodEntry(fd,form);
+    case 'goals':return saveGoals(fd);
+    case 'weights':return saveWeights(fd);
+    default:return;
+  }
+  closeOv2();toast('Saved');
+}
+function quickAdd(m,q){
+  const key=UI.viewDate,x=num(q);
+  switch(m){
+    case 'running':pushEntry('running',key,{km:x,min:0,cal:kcalRun(x)});commit(key,'running','Running Logged','+'+x+' km');break;
+    case 'dsa':pushEntry('dsa',key,{h:x,easy:0,med:0,hard:0,topic:'',notes:''});commit(key,'dsa','DSA Updated','+'+fmtH(x));break;
+    case 'coding':pushEntry('coding',key,{h:x,projH:0,n:0,platform:'',lang:''});commit(key,'coding','Coding Logged','+'+fmtH(x));break;
+    case 'revision':pushEntry('revision',key,{h:x,subject:'',topics:''});commit(key,'revision','Revision Logged','+'+fmtH(x));break;
+    case 'classes':pushEntry('classes',key,{att:q==='att'?1:0,miss:q==='miss'?1:0,h:0,notes:0});commit(key,'classes','Classes Updated',q==='att'?'Attended 1 class':'Missed 1 class');break;
+    case 'water':
+      if(q==='undo'){const l=(S.logs[key]||{}).water||[];if(!l.length){toast('Nothing to undo for this day');return}const e=l.pop();commit(key,'water','Water Entry Removed',e.ml+' ml',false)}
+      else{pushEntry('water',key,{ml:x});commit(key,'water','Water Added','+'+x+' ml')}break;
+    case 'weight':{const w=weightAt(key);if(!w){toast('Log your first weight');openForm('weight');return}setWeight(key,w.kg+x);break}
+  }
+}
+
+/* ----- meals + foods ----- */
+let AF={meal:'breakfast',foodId:null,q:''},foodReturn=false;
+function filteredFoods(){
+  const q=UI.foodQ.trim().toLowerCase();
+  return S.foods.filter(f=>(UI.foodCat==='all'||(f.cat||'Other')===UI.foodCat)&&(!q||(f.name+' '+f.serving+' '+f.cat).toLowerCase().includes(q))).sort((a,b)=>a.name.localeCompare(b.name));
+}
+function pickRows(){
+  const q=AF.q.trim().toLowerCase();
+  const l=S.foods.filter(f=>!q||(f.name+' '+f.cat).toLowerCase().includes(q)).sort((a,b)=>a.name.localeCompare(b.name));
+  return l.length?l.map(f=>'<button type="button" class="pick'+(AF.foodId===f.id?' on':'')+'" data-act="pick" data-id="'+f.id+'"><span>'+esc(f.name)+'<small>'+esc(f.serving)+'</small></span><span class="mono" style="font-size:12px;white-space:nowrap">'+f.cal+' kcal · '+f.p+' g</span></button>').join(''):'<div class="empty" style="border:0">No foods match. Add a custom food below.</div>';
+}
+function previewText(){
+  const f=S.foods.find(x=>x.id===AF.foodId),q=num(($('#af-qty')||{}).value,1);
+  if(!f)return 'Pick a food from the list.';
+  return f.name+' × '+q+' = '+Math.round(f.cal*q)+' kcal · '+f1(f.p*q)+' g protein · '+f1(f.c*q)+' g carbs · '+f1(f.f*q)+' g fat';
+}
+function openAddFood(meal){
+  AF={meal:meal||autoMeal(),foodId:null,q:''};
+  openOv2('<div class="modal glass" role="dialog" aria-modal="true" aria-label="Add food"><div class="m-head"><h2>Add food</h2><button class="btn ghost sm" type="button" data-act="close2">Done</button></div>'+
+   '<form class="form" data-form="addfood" novalidate><div class="row2"><div class="fld"><label for="af-meal">Meal</label><select id="af-meal" name="meal">'+MEALS.map(m=>'<option value="'+m[0]+'"'+(AF.meal===m[0]?' selected':'')+'>'+m[1]+'</option>').join('')+'</select></div>'+
+   '<div class="fld"><label for="af-qty">Quantity (servings)</label><input id="af-qty" name="qty" type="number" min="0.25" step="0.25" value="1" data-input="afqty"></div></div>'+
+   '<div class="fld"><label for="af-q">Search foods</label><input id="af-q" type="search" data-input="afq" placeholder="Search" autocomplete="off"></div>'+
+   '<div class="pickbox" id="pick">'+pickRows()+'</div><div class="hint" id="af-prev" style="margin:0">'+previewText()+'</div><div class="err" id="f-err" role="alert"></div>'+
+   '<div class="form-actions"><button class="btn" type="button" data-act="food-new" data-from="af">Custom food</button><button class="btn primary" type="submit">Add to meal</button></div></form></div>');
+}
+function addFoodEntry(fd,form){
+  const f=S.foods.find(x=>x.id===AF.foodId),q=num(fd.get('qty'),0),meal=fd.get('meal')||AF.meal;
+  if(!f){$('#f-err',form).textContent='Pick a food first.';return}
+  if(!(q>0)){$('#f-err',form).textContent='Quantity must be above 0.';return}
+  const key=UI.viewDate,l=S.logs[key]||(S.logs[key]={});l.meals=l.meals||{};(l.meals[meal]=l.meals[meal]||[]).push({id:uid(),ts:Date.now(),foodId:f.id,name:f.name,serving:f.serving,qty:q,cal:f.cal,p:f.p,c:f.c,f:f.f,fi:f.fi});
+  AF.meal=meal;
+  commit(key,'diet',(MEALS.find(m=>m[0]===meal)||[0,'Meal'])[1]+' Added',f.name+' × '+q+' · '+Math.round(f.cal*q)+' kcal');
+  toast('Added '+f.name);
+}
+function openFoodForm(id){
+  const f=id?S.foods.find(x=>x.id===id):null;
+  const cats=Array.from(new Set(['Fruit','Dairy','Grains','Protein','Vegetable','Beverage','Snack','Other'].concat(S.foods.map(x=>x.cat||'Other'))));
+  openOv2('<div class="modal glass" role="dialog" aria-modal="true" aria-label="Food"><div class="m-head"><h2>'+(f?'Edit food':'Custom food')+'</h2><button class="btn ghost sm" type="button" data-act="close2">Close</button></div>'+
+   '<form class="form" data-form="food" data-id="'+(f?f.id:'')+'" novalidate><div class="row2">'+fld('name','Name','text',{req:1,val:f?f.name:''})+fld('serving','Serving','text',{req:1,val:f?f.serving:'',ph:'e.g. 1 bowl (150 g)'})+'</div>'+
+   '<div class="row2">'+fld('cal','Calories (kcal)','number',{req:1,val:f?f.cal:''})+fld('p','Protein (g)','number',{val:f?f.p:0})+fld('c','Carbs (g)','number',{val:f?f.c:0})+fld('f','Fat (g)','number',{val:f?f.f:0})+fld('fi','Fiber (g)','number',{val:f?f.fi:0})+'</div>'+
+   fld('cat','Category','text',{list:'dl-cat',val:f?f.cat:'',ph:'e.g. Snack'})+dl('dl-cat',cats)+'<div class="err" id="f-err" role="alert"></div>'+
+   '<div class="form-actions"><button class="btn" type="button" data-act="close2">Cancel</button><button class="btn primary" type="submit">'+(f?'Save changes':'Add food')+'</button></div></form></div>');
+}
+function saveFood(fd,form){
+  const name=String(fd.get('name')||'').trim(),serving=String(fd.get('serving')||'').trim(),n=k=>Math.max(0,num(fd.get(k),0));
+  if(!name||!serving){$('#f-err',form).textContent='Name and serving are required.';return}
+  if(!(num(fd.get('cal'),-1)>=0)||fd.get('cal')===''){$('#f-err',form).textContent='Enter the calories for one serving.';return}
+  const rec={name,serving,cal:n('cal'),p:n('p'),c:n('c'),f:n('f'),fi:n('fi'),cat:String(fd.get('cat')||'').trim()||'Other'};
+  const id=form.dataset.id;let nid=id;
+  if(id){Object.assign(S.foods.find(x=>x.id===id),rec)}else{nid=uid();S.foods.push(Object.assign({id:nid,builtin:false},rec))}
+  save();
+  if(foodReturn){foodReturn=false;const m=AF.meal;render();openAddFood(m);AF.foodId=nid;$('#pick').innerHTML=pickRows();$('#af-prev').textContent=previewText();toast('Food saved');return}
+  closeOv2();render();toast('Food saved');
+}
+
+/* ----- settings saves ----- */
+function saveGoals(fd){
+  const g=S.settings.goals,b=S.settings.body,err=m=>{$('#goalsErr').textContent=m};
+  const keys=['runKm','dsaH','codingH','classes','revisionH','waterL','calories','protein','carbs','fat','fiber'],next={};
+  for(const k of keys){const v=num(fd.get(k),NaN);if(!(v>=0))return err('Enter 0 or more for every target.');next[k]=v}
+  const opt=k=>fd.get(k)===''||fd.get(k)==null?null:num(fd.get(k),null);
+  const tw=opt('targetWeight'),sw=opt('startWeight'),hc=opt('heightCm'),sm=num(fd.get('streakMin'),50);
+  if(tw!=null&&!(tw>=20&&tw<=400))return err('Target weight must be between 20 and 400 kg.');
+  if(sw!=null&&!(sw>=20&&sw<=400))return err('Start weight must be between 20 and 400 kg.');
+  if(hc!=null&&!(hc>=50&&hc<=260))return err('Height must be between 50 and 260 cm.');
+  if(!(sm>=0&&sm<=100))return err('Streak threshold must be between 0 and 100.');
+  Object.assign(g,next);b.targetWeight=tw;b.startWeight=sw;b.heightCm=hc;S.settings.streakMin=sm;
+  commit(todayKey(),'system','Goals Updated','',false);toast('Goals saved');
+}
+function weightInputs(){const o={};PROG_MODS.forEach(m=>{o[m]=num((document.getElementById('w-'+m)||{}).value,0)});return o}
+function wsum(){
+  const t=sum(Object.values(weightInputs())),el=$('#wtotal'),b=$('#wsave');if(!el)return;
+  el.className='wtotal '+(t===100?'ok':'no');el.textContent='Total '+t+'% '+(t===100?'· valid':'· must equal 100%');if(b)b.disabled=t!==100;
+}
+function saveWeights(fd){
+  const w={};PROG_MODS.forEach(m=>{w[m]=Math.round(num(fd.get(m),0))});
+  if(sum(Object.values(w))!==100){toast('Weights must total 100%');return}
+  S.settings.weights=w;commit(todayKey(),'system','Progress Weights Updated','',false);toast('Weights saved');
+}
+function balanceWeights(){
+  const w=weightInputs(),t=sum(Object.values(w));if(t<=0){PROG_MODS.forEach(m=>{document.getElementById('w-'+m).value=Math.floor(100/PROG_MODS.length)});}
+  else{const sc={};let tot=0;PROG_MODS.forEach(m=>{sc[m]=Math.round(w[m]/t*100);tot+=sc[m]});
+    const big=PROG_MODS.slice().sort((a,b)=>sc[b]-sc[a])[0];sc[big]+=100-tot;PROG_MODS.forEach(m=>{document.getElementById('w-'+m).value=sc[m]})}
+  const t2=sum(Object.values(weightInputs()));if(t2!==100){const m=PROG_MODS[0];document.getElementById('w-'+m).value=num(document.getElementById('w-'+m).value)+100-t2}
+  wsum();
+}
+
+/* ----- export / import / backup ----- */
+const payload=()=>({app:'personal-analytics-dashboard',version:1,exported:new Date().toISOString(),data:S});
+const csvCell=v=>{v=String(v==null?'':v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+function buildCSV(){
+  const dates=new Set(Object.keys(S.logs).filter(k=>T(k).any));S.weights.forEach(w=>dates.add(w.date));
+  const cols=['date','progress_pct','running_km','running_min','running_kcal','dsa_hours','dsa_easy','dsa_medium','dsa_hard','coding_hours','coding_problems','project_hours','classes_attended','classes_missed','class_hours','revision_hours','topics_revised','water_ml','calories','protein_g','carbs_g','fat_g','fiber_g','weight_kg'];
+  const rows=Array.from(dates).sort().map(k=>{const t=T(k),w=weightOn(k);
+    return [k,f1(progressFor(k).overall),f2(t.runKm),f1(t.runMin),Math.round(t.runCal),f2(t.dsaH),t.easy,t.med,t.hard,f2(t.codeH),t.codeN,f2(t.projH),t.clsAtt,t.clsMiss,f2(t.clsH),f2(t.revH),t.revTopics,Math.round(t.waterMl),Math.round(t.cal),f1(t.prot),f1(t.carbs),f1(t.fat),f1(t.fiber),w?w.kg:''].map(csvCell).join(',')});
+  return [cols.join(',')].concat(rows).join('\n');
+}
+let EXP={text:'',fname:'',mime:''};
+function showText(title,text,fname,mime,note){
+  EXP={text,fname,mime};
+  openOv2('<div class="modal glass mid" role="dialog" aria-modal="true" aria-label="'+esc(title)+'"><div class="m-head"><h2>'+esc(title)+'</h2><button class="btn ghost sm" data-act="close2">Close</button></div>'+
+   '<div class="hint">'+(note||'')+' If downloads are blocked in this view, copy the text and save it as <b>'+esc(fname)+'</b>.</div><textarea id="exp-text" class="code" readonly>'+esc(text)+'</textarea>'+
+   '<div class="form-actions" style="margin-top:12px"><button class="btn" data-act="download">Download file</button><button class="btn primary" data-act="copy">Copy to clipboard</button></div></div>');
+}
+function doCopy(){
+  const ta=$('#exp-text');
+  const fallback=()=>{try{ta.focus();ta.select();document.execCommand('copy');toast('Copied')}catch(e){toast('Select the text and copy it manually')}};
+  try{navigator.clipboard.writeText(EXP.text).then(()=>toast('Copied'),fallback)}catch(e){fallback()}
+}
+function doDownload(){
+  try{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([EXP.text],{type:EXP.mime}));a.download=EXP.fname;document.body.appendChild(a);a.click();a.remove();toast('Download requested')}catch(e){toast('Download blocked. Copy the text instead.')}
+}
+function safetyCopy(){lsSet('pad.safety.v1',JSON.stringify({ts:Date.now(),data:S}))}
+function readBackup(k){try{const r=lsGet(k);return r?JSON.parse(r):null}catch(e){return null}}
+function openImport(withLocal){
+  let local='';
+  if(withLocal){
+    const bk=readBackup(BK_KEY),sf=readBackup('pad.safety.v1');
+    const row=(label,x,act)=>'<div class="ent"><div class="t"><b>'+label+'</b><div class="d">'+(x&&x.ts?new Date(x.ts).toLocaleString():'None saved')+'</div></div>'+(x&&x.data?'<button class="btn sm" data-act="'+act+'">Restore</button>':'')+'</div>';
+    local='<div style="margin-bottom:16px">'+row('Latest backup in this browser',bk,'restore-bk')+row('Safety copy from before your last import or reset',sf,'restore-safety')+'</div>';
+  }
+  openOv2('<div class="modal glass mid" role="dialog" aria-modal="true" aria-label="Import data"><div class="m-head"><h2>'+(withLocal?'Restore data':'Import JSON')+'</h2><button class="btn ghost sm" data-act="close2">Close</button></div>'+local+
+   '<div class="hint">Choose an exported JSON file or paste its text. This replaces your current data; a safety copy is kept first.</div>'+
+   '<div class="form"><div class="fld"><label for="imp-file">JSON file</label><input id="imp-file" type="file" accept=".json,application/json,text/plain" data-chg="impfile"></div>'+
+   '<div class="fld"><label for="imp-text">Or paste JSON</label><textarea id="imp-text" class="code" placeholder="{ &quot;app&quot;: &quot;personal-analytics-dashboard&quot;, ... }"></textarea></div><div class="err" id="imp-err" role="alert"></div>'+
+   '<div class="form-actions"><button class="btn primary" data-act="do-import">Replace my data</button></div></div></div>');
+}
+function applyImported(obj,label){
+  let d=obj;if(d&&d.data&&(d.app||d.version))d=d.data;
+  if(!d||typeof d!=='object'||(!d.logs&&!d.settings&&!d.weights))throw new Error('That does not look like dashboard data.');
+  const next=migrate(d);safetyCopy();S=next;tc={};applyAccent();flush();UI.viewDate=todayKey();
+  render();toast(label||'Data imported');
+}
+function doImport(){
+  const txt=($('#imp-text')||{}).value||'',e=$('#imp-err');
+  if(!txt.trim()){e.textContent='Paste JSON or choose a file first.';return}
+  try{applyImported(JSON.parse(txt));closeOv2();renderDetail()}catch(x){e.textContent=x&&x.message&&!/JSON/.test(x.message)?x.message:'That text is not valid JSON.'}
+}
+function restoreFrom(k,label){const b=readBackup(k);if(!b||!b.data){toast('Nothing to restore');return}try{applyImported({data:b.data,app:'x'},label);closeOv2()}catch(e){toast('Backup could not be read')}}
+function armBtn(b,label){
+  if(b.dataset.arm==='1')return true;
+  const old=b.textContent;b.dataset.arm='1';b.textContent=label;
+  setTimeout(()=>{b.dataset.arm='';b.textContent=old},4000);return false;
+}
+
+/* ----- events ----- */
+const ACT={
+  nav(b){UI.view=b.dataset.v;UI.detail=null;closeOv2();renderDetail();render(true);window.scrollTo({top:0,behavior:'smooth'})},
+  'date-today'(){UI.viewDate=todayKey();render()},
+  detail(b){UI.detail=b.dataset.m;renderDetail()},
+  close(){closeTop()},close2(){closeOv2()},
+  log(b){openForm(b.dataset.m)},
+  quick(b){quickAdd(b.dataset.m,b.dataset.q)},
+  'del-entry'(b){
+    const m=b.dataset.m,k=b.dataset.k,l=S.logs[k]||{};
+    let list=m==='diet'?((l.meals||{})[b.dataset.meal]||[]):(l[m]||[]),i=list.findIndex(e=>e.id===b.dataset.id);if(i<0)return;
+    const e=list.splice(i,1)[0];
+    commit(k,m==='diet'?'diet':m,(MODS[m]?MODS[m].label:'Entry')+' Entry Removed',entryText(m,e),false);
+  },
+  'del-weight'(b){const w=S.weights.find(x=>x.id===b.dataset.id);if(!w)return;S.weights=S.weights.filter(x=>x.id!==w.id);commit(w.date,'weight','Weight Entry Removed',f1(w.kg)+' kg',false)},
+  'meal-add'(b){openAddFood(b.dataset.meal)},
+  'meal-del'(b){
+    const key=UI.viewDate,list=((S.logs[key]||{}).meals||{})[b.dataset.meal]||[],i=list.findIndex(e=>e.id===b.dataset.id);if(i<0)return;
+    const e=list.splice(i,1)[0];commit(key,'diet','Food Removed',e.name+' from '+b.dataset.meal,false);
+  },
+  pick(b){AF.foodId=b.dataset.id;$$('.pick',$('#pick')).forEach(x=>x.classList.toggle('on',x.dataset.id===AF.foodId));$('#af-prev').textContent=previewText()},
+  'food-new'(b){foodReturn=b.dataset.from==='af';openFoodForm(null)},
+  'food-edit'(b){foodReturn=false;openFoodForm(b.dataset.id)},
+  'food-del'(b){if(!armBtn(b,'Confirm?'))return;S.foods=S.foods.filter(f=>f.id!==b.dataset.id);save();render();toast('Food deleted')},
+  'food-restore'(){let n=0;DEFAULT_FOODS.forEach(d=>{if(!S.foods.some(f=>f.id===d.id)){S.foods.push(JSON.parse(JSON.stringify(d)));n++}});save();render();toast(n?'Restored '+n+' default food'+(n>1?'s':''):'All defaults already present')},
+  'meal-range'(b){UI.mealRange=b.dataset.r;render()},
+  range(b){UI.range=+b.dataset.r;render()},
+  'tl-filter'(b){UI.tlFilter=b.dataset.t;UI.tlMax=80;render()},
+  'tl-more'(){UI.tlMax+=120;render()},
+  accent(b){S.settings.accent=b.dataset.a;applyAccent();save();render()},
+  bal(){balanceWeights()},
+  'export-json'(){showText('Export JSON',JSON.stringify(payload(),null,2),'dashboard-export.json','application/json','Everything in one file: goals, logs, foods, weigh-ins and timeline.')},
+  'export-csv'(){showText('Export CSV',buildCSV(),'dashboard-daily.csv','text/csv','One row per day with every tracked total.')},
+  import(){openImport(false)},
+  restore(){openImport(true)},
+  backup(){lsSet(BK_KEY,JSON.stringify({ts:Date.now(),data:S}));showText('Backup all data',JSON.stringify(payload(),null,2),'dashboard-backup.json','application/json','A backup was also saved in this browser just now.')},
+  'restore-bk'(){restoreFrom(BK_KEY,'Backup restored')},
+  'restore-safety'(){restoreFrom('pad.safety.v1','Safety copy restored')},
+  'do-import'(){doImport()},
+  copy(){doCopy()},download(){doDownload()},
+  reset(b){if(!armBtn(b,'Click again to erase everything'))return;safetyCopy();S=defaultState();tc={};applyAccent();flush();UI.viewDate=todayKey();UI.detail=null;closeOv2();renderDetail();render(true);toast('All data reset. A safety copy was kept.')}
+};
+document.addEventListener('click',e=>{
+  if(e.target.id==='ov2'){closeOv2();return}
+  if(e.target.id==='ov'){closeTop();return}
+  const b=e.target.closest('[data-act]');if(!b)return;
+  const f=ACT[b.dataset.act];if(f){f(b,e)}
+});
+document.addEventListener('submit',e=>{
+  const f=e.target.closest('form[data-form]');if(!f)return;e.preventDefault();
+  handleForm(f.dataset.form,new FormData(f),f);
+});
+document.addEventListener('change',e=>{
+  const t=e.target,c=t.dataset&&t.dataset.chg;if(!c)return;
+  if(c==='viewDate'){if(t.value&&t.value<=todayKey()){UI.viewDate=t.value;render()}else{t.value=UI.viewDate}}
+  else if(c==='qty'){
+    const key=UI.viewDate,list=((S.logs[key]||{}).meals||{})[t.dataset.meal]||[],en=list.find(x=>x.id===t.dataset.id);
+    if(en){en.qty=Math.max(0.25,num(t.value,1));commit(key,'diet',null,null,false)}
+  }
+  else if(c==='note'){const l=S.logs[UI.viewDate]||(S.logs[UI.viewDate]={});(l.mealNotes=l.mealNotes||{})[t.dataset.meal]=t.value;save()}
+  else if(c==='foodCat'){UI.foodCat=t.value;$('#foodTable').innerHTML=foodRows(filteredFoods())}
+  else if(c==='impfile'){const f=t.files&&t.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{$('#imp-text').value=String(r.result||'')};r.readAsText(f)}
+});
+document.addEventListener('input',e=>{
+  const t=e.target,c=t.dataset&&t.dataset.input;if(!c)return;
+  if(c==='foodQ'){UI.foodQ=t.value;$('#foodTable').innerHTML=foodRows(filteredFoods())}
+  else if(c==='afq'){AF.q=t.value;$('#pick').innerHTML=pickRows()}
+  else if(c==='afqty'){$('#af-prev').textContent=previewText()}
+  else if(c==='wsum'){wsum()}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(!$('#ov2').hidden||!$('#ov').hidden)){closeTop()}});
+
+/* ---------- 9. boot ---------- */
+if(window.Chart){
+  Chart.defaults.font.family="'Inter',system-ui,sans-serif";Chart.defaults.font.size=11.5;Chart.defaults.color='#8b93a7';Chart.defaults.animation.duration=800;
+}
+applyAccent();
+render(true);
+setInterval(tick,1000);
+setTimeout(()=>$('#loader').classList.add('off'),450);
+if(!window.Chart)setTimeout(()=>toast('Charts could not load. Everything else still works.'),900);
+if(!storageOK)setTimeout(()=>toast('Browser storage is off here. Use Backup to keep your data.'),1500);
+})();
+</script>
+</body>
+</html>
